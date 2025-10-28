@@ -1,0 +1,38 @@
+version: "2"
+servers:
+  - engine: postgresql
+    uri: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+sql:
+  - engine: "postgresql"
+    queries: "query.sql"
+    schema: "schema.sql"
+    database:
+      managed: true
+    gen:
+      go:
+        package: "database"
+        out: "."
+        sql_package: "pgx/v5"
+        emit_empty_slices: true
+        emit_sql_as_comment: true
+        emit_interface: true
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: 'pg_catalog.timestamp'
+            go_type: 'time.Time'
+          - db_type: 'date'
+            go_type: 'time.Time'
+          - db_type: 'date'
+            go_type:
+              type: 'time.Time'
+              pointer: true
+            nullable: true
+          - db_type: 'pg_catalog.timestamp'
+            go_type:
+              type: 'time.Time'
+              pointer: true
+            nullable: true
+          - db_type: 'uuid'
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"

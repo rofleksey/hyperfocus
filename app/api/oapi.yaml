@@ -1,0 +1,14 @@
+package: api
+generate:
+  fiber-server: true
+  strict-server: true
+  models: true
+  embedded-spec: true
+output: gen.go
+output-options:
+  skip-prune: true
+  user-templates:
+    "strict/strict-fiber.tmpl": ./templates/strict-fiber.tmpl
+compatibility:
+  always-prefix-enum-values: true
+

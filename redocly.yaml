@@ -1,0 +1,21 @@
+rules:
+  tag-description: warn
+  no-path-trailing-slash: error
+  no-identical-paths: error
+  no-ambiguous-paths: warn
+  path-declaration-must-exist: error
+  path-not-include-query: error
+  path-parameters-defined: error
+  operation-2xx-response: warn
+  operation-summary: error
+  operation-operationId-unique: error
+  operation-operationId-url-safe: error
+  operation-parameters-unique: error
+  security-defined: error
+  no-unresolved-refs: error
+  no-enum-type-mismatch: error
+  struct: error
+
+#apis:
+#  cms:
+#    root: ./app/api/api/openapi.yaml

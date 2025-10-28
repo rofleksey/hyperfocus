@@ -1,0 +1,15 @@
+.idea/
+data/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+hyperfocus
+**/node_modules
+scripts
+config.yaml
+debug_dataset
+app/util/dbd/hudImage.png
