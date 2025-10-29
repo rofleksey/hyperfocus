@@ -131,6 +131,10 @@ func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, e
 }
 
 func (c *Client) getPlaylist(id string, accessToken *AccessToken) (string, error) {
+	if accessToken == nil {
+		return "", fmt.Errorf("got nil access token")
+	}
+
 	url := fmt.Sprintf("https://usher.ttvnw.net/%s/%s.m3u8?client_id=%s&token=%s&sig=%s&allow_source=true&allow_audio_only=true",
 		"api/channel/hls",
 		id,

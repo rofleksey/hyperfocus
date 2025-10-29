@@ -3,15 +3,24 @@ package analyze
 import (
 	"context"
 	"errors"
-	"fmt"
 	"hyperfocus/app/client/twitch_live"
 	"hyperfocus/app/database"
 	"image"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/samber/oops"
 )
+
+type StreamTask struct {
+	Index  int
+	Stream database.Stream
+
+	Mutex sync.Mutex
+	Frame image.Image
+	Error bool
+}
 
 func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream) (image.Image, error) {
 	// try to use cached stream url first
@@ -22,9 +31,9 @@ func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream)
 		}
 	}
 
-	if err := s.liveLimiter.Wait(ctx); err != nil {
-		return nil, fmt.Errorf("liveLimiter.Wait: %w", err)
-	}
+	//if err := s.liveLimiter.Wait(ctx); err != nil {
+	//	return nil, fmt.Errorf("liveLimiter.Wait: %w", err)
+	//}
 
 	streamQualities, err := s.liveClient.GetM3U8(ctx, stream.ID)
 	if err != nil {

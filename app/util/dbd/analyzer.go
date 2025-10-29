@@ -14,14 +14,6 @@ import (
 	"github.com/samber/do"
 )
 
-/* BEST !!!!!!!!!!!
-magick k0per1s_1.jpg \
-  -colorspace Gray \
-  -lat 8x8+5% \
-  -negate \
-  k0per1s_1_processed.png
-*/
-
 type ImageAnalyzer struct {
 	paddleClient *paddle.Client
 	magickClient *magick.Client

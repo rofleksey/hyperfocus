@@ -2,14 +2,13 @@ package analyze
 
 import (
 	"context"
-	"fmt"
 	"hyperfocus/app/client/frame_grabber"
 	"hyperfocus/app/client/twitch_live"
 	"hyperfocus/app/config"
 	"hyperfocus/app/database"
-	"hyperfocus/app/util"
 	"hyperfocus/app/util/dbd"
 	"hyperfocus/app/util/telemetry"
+	"image"
 	"log/slog"
 	"os"
 	"sync"
@@ -50,10 +49,6 @@ func New(di *do.Injector) (*Service, error) {
 }
 
 func (s *Service) doProcessing(ctx context.Context) error {
-	slog.Debug("Starting processing",
-		slog.Int("worker_count", s.cfg.Processing.WorkerCount),
-	)
-
 	started := time.Now()
 
 	streams, err := s.queries.GetOnlineStreams(ctx)
@@ -61,55 +56,136 @@ func (s *Service) doProcessing(ctx context.Context) error {
 		return oops.Errorf("GetOnlineStreams: %v", err)
 	}
 
-	var wg sync.WaitGroup
-	taskChan := make(chan database.Stream)
+	slog.Debug("Starting processing",
+		slog.Int("fetch_worker_count", s.cfg.Processing.FetchWorkerCount),
+		slog.Int("process_worker_count", s.cfg.Processing.ProcessWorkerCount),
+		slog.Int("task_count", len(streams)),
+	)
 
-	for range s.cfg.Processing.WorkerCount {
+	var wg sync.WaitGroup
+
+	fetchChan := make(chan *StreamTask)
+	processChanInternal := make(chan *StreamTask)
+	processChan := make(chan *StreamTask)
+
+	for range s.cfg.Processing.FetchWorkerCount {
 		wg.Go(func() {
-			s.runWorker(ctx, taskChan)
+			s.runFetchWorker(ctx, fetchChan, processChanInternal)
 		})
 	}
 
-	for _, stream := range streams {
-		taskChan <- stream
+	for range s.cfg.Processing.ProcessWorkerCount {
+		wg.Go(func() {
+			s.runProcessWorker(ctx, processChan)
+		})
 	}
 
-	close(taskChan)
+	wg.Go(func() {
+		for index, stream := range streams {
+			fetchChan <- &StreamTask{
+				Index:  index,
+				Stream: stream,
+			}
+		}
+		close(fetchChan)
+	})
+
+	wg.Go(func() {
+		counter := 0
+
+		for task := range processChanInternal {
+			processChan <- task
+			counter++
+
+			if counter == len(streams) {
+				break
+			}
+		}
+
+		close(processChanInternal)
+		close(processChan)
+	})
+
 	wg.Wait()
 
 	slog.Debug("Processing finished",
 		slog.Duration("duration", time.Since(started)),
+		slog.Int("count", len(streams)),
 	)
 
 	return nil
 }
 
-func (s *Service) runWorker(ctx context.Context, taskChan chan database.Stream) {
-	for stream := range taskChan {
-		if err := s.processChannel(ctx, stream); err != nil {
+func (s *Service) runFetchWorker(ctx context.Context, taskChan chan *StreamTask, resultChan chan *StreamTask) {
+	for task := range taskChan {
+		frameImg, err := s.fetchChannelFrame(ctx, task)
+		if err != nil {
+			slog.ErrorContext(ctx, "Error fetching channel frame",
+				slog.String("channel_name", task.Stream.ID),
+				slog.Any("error", err),
+			)
+		}
+
+		task.Mutex.Lock()
+		task.Frame = frameImg
+		task.Error = err != nil
+		task.Mutex.Unlock()
+
+		resultChan <- task
+	}
+}
+
+func (s *Service) runProcessWorker(ctx context.Context, taskChan chan *StreamTask) {
+	for task := range taskChan {
+		if err := s.processChannel(ctx, task); err != nil {
 			slog.ErrorContext(ctx, "Error processing channel",
-				slog.String("channel_name", stream.ID),
+				slog.String("channel_name", task.Stream.ID),
 				slog.Any("error", err),
 			)
 		}
 	}
 }
 
-func (s *Service) processChannel(ctx context.Context, stream database.Stream) error {
-	started := time.Now()
-	timeout := time.Duration(s.cfg.Processing.Timeout) * time.Second
+func (s *Service) fetchChannelFrame(ctx context.Context, task *StreamTask) (image.Image, error) {
+	//started := time.Now()
+	timeout := time.Duration(s.cfg.Processing.FetchTimeout) * time.Second
 
-	frameImg, err := s.obtainStreamFrame(ctx, stream)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	frameImg, err := s.obtainStreamFrame(ctx, task.Stream)
 	if err != nil {
-		return oops.Errorf("obtainStreamFrame: %v", err)
+		return nil, oops.Errorf("obtainStreamFrame: %v", err)
 	}
 
 	if frameImg == nil {
 		slog.Debug("Skipping offline channel",
-			slog.String("channel_name", stream.ID),
+			slog.String("channel_name", task.Stream.ID),
 		)
+		return nil, nil
+	}
+
+	//slog.Debug("Finished fetching channel frame",
+	//	slog.Int("index", task.Index),
+	//	slog.String("channel_name", task.Stream.ID),
+	//	slog.Duration("duration", time.Since(started)),
+	//)
+
+	return frameImg, nil
+}
+
+func (s *Service) processChannel(ctx context.Context, task *StreamTask) error {
+	task.Mutex.Lock()
+	frameImg := task.Frame
+	taskErr := task.Error
+	task.Mutex.Unlock()
+
+	if frameImg == nil || taskErr {
 		return nil
 	}
+
+	started := time.Now()
+	timeout := time.Duration(s.cfg.Processing.ProcessTimeout) * time.Second
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -120,21 +196,22 @@ func (s *Service) processChannel(ctx context.Context, stream database.Stream) er
 	}
 
 	if err = s.queries.UpdateStreamData(ctx, database.UpdateStreamDataParams{
-		ID:          stream.ID,
+		ID:          task.Stream.ID,
 		PlayerNames: meg.NonNilSlice(data.Usernames),
 	}); err != nil {
 		return oops.Errorf("UpdateStreamData: %v", err)
 	}
 
 	slog.Debug("Finished processing channel",
-		slog.String("channel_name", stream.ID),
+		slog.Int("index", task.Index),
+		slog.String("channel_name", task.Stream.ID),
 		slog.Duration("duration", time.Since(started)),
 		slog.Int("usernames_count", len(data.Usernames)),
 	)
 
-	if meg.Environment != "production" && len(data.Usernames) != 4 {
-		util.SaveDebugImage(frameImg, fmt.Sprintf("%s-%d", stream.ID, len(data.Usernames)))
-	}
+	//if meg.Environment != "production" && len(data.Usernames) != 4 {
+	//	util.SaveDebugImage(frameImg, fmt.Sprintf("%s-%d", task.Stream.ID, len(data.Usernames)))
+	//}
 
 	return nil
 }

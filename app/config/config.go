@@ -98,10 +98,14 @@ type Paddle struct {
 }
 
 type Processing struct {
-	// Number of workers to process the live streams
-	WorkerCount int `yaml:"worker_count" example:"10" validate:"required"`
+	// Number of workers that fetch frames
+	FetchWorkerCount int `yaml:"fetch_worker_count" example:"32" validate:"required"`
+	// Fetch frame timeout
+	FetchTimeout int `yaml:"fetch_timeout" example:"60" validate:"required"`
+	// Number of workers that process the frames
+	ProcessWorkerCount int `yaml:"process_worker_count" example:"8" validate:"required"`
 	// Channel processing timeout in seconds
-	Timeout int `yaml:"timeout" example:"60" validate:"required"`
+	ProcessTimeout int `yaml:"process_timeout" example:"60" validate:"required"`
 }
 
 type Server struct {
@@ -144,11 +148,17 @@ func Load(configPath string) (*Config, error) {
 	if result.DB.Database == "" {
 		result.DB.Database = "hyperfocus"
 	}
-	if result.Processing.WorkerCount == 0 {
-		result.Processing.WorkerCount = 10
+	if result.Processing.ProcessWorkerCount == 0 {
+		result.Processing.ProcessWorkerCount = 8
 	}
-	if result.Processing.Timeout == 0 {
-		result.Processing.Timeout = 60
+	if result.Processing.ProcessTimeout == 0 {
+		result.Processing.ProcessTimeout = 60
+	}
+	if result.Processing.FetchWorkerCount == 0 {
+		result.Processing.FetchWorkerCount = 32
+	}
+	if result.Processing.FetchTimeout == 0 {
+		result.Processing.FetchTimeout = 60
 	}
 	if result.Server.HttpPort == 0 {
 		result.Server.HttpPort = 8080
