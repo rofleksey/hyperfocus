@@ -2,11 +2,12 @@ package analyze
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"hyperfocus/app/client/frame_grabber"
 	"hyperfocus/app/client/twitch_live"
 	"hyperfocus/app/config"
 	"hyperfocus/app/database"
+	"hyperfocus/app/util"
 	"hyperfocus/app/util/dbd"
 	"hyperfocus/app/util/telemetry"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"github.com/rofleksey/meg"
 	"github.com/samber/do"
 	"github.com/samber/oops"
+	"golang.org/x/time/rate"
 )
 
 var serviceName = "analyze"
@@ -28,6 +30,8 @@ type Service struct {
 	liveClient    *twitch_live.Client
 	frameGrabber  *frame_grabber.Client
 	imageAnalyzer *dbd.ImageAnalyzer
+
+	liveLimiter *rate.Limiter
 }
 
 func New(di *do.Injector) (*Service, error) {
@@ -40,6 +44,8 @@ func New(di *do.Injector) (*Service, error) {
 		liveClient:    do.MustInvoke[*twitch_live.Client](di),
 		frameGrabber:  do.MustInvoke[*frame_grabber.Client](di),
 		imageAnalyzer: do.MustInvoke[*dbd.ImageAnalyzer](di),
+
+		liveLimiter: rate.NewLimiter(rate.Limit(1), 1), // 1rps
 	}, nil
 }
 
@@ -56,16 +62,16 @@ func (s *Service) doProcessing(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
-	taskChan := make(chan string)
+	taskChan := make(chan database.Stream)
 
 	for range s.cfg.Processing.WorkerCount {
 		wg.Go(func() {
-			s.runWorker(ctx, &wg, taskChan)
+			s.runWorker(ctx, taskChan)
 		})
 	}
 
 	for _, stream := range streams {
-		taskChan <- stream.ID
+		taskChan <- stream
 	}
 
 	close(taskChan)
@@ -78,54 +84,35 @@ func (s *Service) doProcessing(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) runWorker(ctx context.Context, wg *sync.WaitGroup, taskChan chan string) {
-	defer wg.Done()
-
-	for channelName := range taskChan {
-		if err := s.processChannel(ctx, channelName); err != nil {
+func (s *Service) runWorker(ctx context.Context, taskChan chan database.Stream) {
+	for stream := range taskChan {
+		if err := s.processChannel(ctx, stream); err != nil {
 			slog.ErrorContext(ctx, "Error processing channel",
-				slog.String("channel_name", channelName),
+				slog.String("channel_name", stream.ID),
 				slog.Any("error", err),
 			)
 		}
-
-		time.Sleep(time.Second)
 	}
 }
 
-func (s *Service) processChannel(ctx context.Context, channelName string) error {
+func (s *Service) processChannel(ctx context.Context, stream database.Stream) error {
 	started := time.Now()
 	timeout := time.Duration(s.cfg.Processing.Timeout) * time.Second
 
+	frameImg, err := s.obtainStreamFrame(ctx, stream)
+	if err != nil {
+		return oops.Errorf("obtainStreamFrame: %v", err)
+	}
+
+	if frameImg == nil {
+		slog.Debug("Skipping offline channel",
+			slog.String("channel_name", stream.ID),
+		)
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	streamQualities, err := s.liveClient.GetM3U8(ctx, channelName)
-	if err != nil {
-		if errors.Is(err, twitch_live.ErrNotFound) {
-			slog.Debug("Skipping offline channel",
-				slog.String("channel_name", channelName),
-			)
-
-			return nil
-		}
-		return oops.Errorf("GetM3U8: %v", err)
-	}
-	if len(streamQualities) == 0 {
-		return oops.Errorf("No stream qualities found")
-	}
-
-	quality, err := selectOptimalStreamQuality(streamQualities)
-	if err != nil {
-		return oops.Errorf("selectOptimalStreamQuality: %v", err)
-	}
-
-	url := quality.URL
-
-	frameImg, err := s.frameGrabber.GrabFrameFromM3U8(ctx, url)
-	if err != nil {
-		return oops.Errorf("GrabFrameFromM3U8: %v", err)
-	}
 
 	data, err := s.imageAnalyzer.AnalyzeImage(ctx, frameImg)
 	if err != nil {
@@ -133,21 +120,21 @@ func (s *Service) processChannel(ctx context.Context, channelName string) error 
 	}
 
 	if err = s.queries.UpdateStreamData(ctx, database.UpdateStreamDataParams{
-		ID:          channelName,
+		ID:          stream.ID,
 		PlayerNames: meg.NonNilSlice(data.Usernames),
 	}); err != nil {
 		return oops.Errorf("UpdateStreamData: %v", err)
 	}
 
 	slog.Debug("Finished processing channel",
-		slog.String("channel_name", channelName),
+		slog.String("channel_name", stream.ID),
 		slog.Duration("duration", time.Since(started)),
 		slog.Int("usernames_count", len(data.Usernames)),
 	)
 
-	//if len(data.Usernames) != 4 {
-	//	util.SaveDebugImage(frameImg, channelName)
-	//}
+	if meg.Environment != "production" && len(data.Usernames) != 4 {
+		util.SaveDebugImage(frameImg, fmt.Sprintf("%s-%d", stream.ID, len(data.Usernames)))
+	}
 
 	return nil
 }
@@ -167,6 +154,7 @@ func (s *Service) RunProcessLoop(ctx context.Context) {
 				)
 			}
 
+			// TODO: remove in production
 			select {
 			case <-ctx.Done():
 				return

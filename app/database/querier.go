@@ -35,7 +35,7 @@ type Querier interface {
 	DeleteUser(ctx context.Context, username string) error
 	//GetOnlineStreams
 	//
-	//  SELECT id, updated, online, player_names
+	//  SELECT id, updated, url, online, player_names
 	//  FROM streams
 	//  WHERE online = true
 	GetOnlineStreams(ctx context.Context) ([]Stream, error)
@@ -69,6 +69,20 @@ type Querier interface {
 	//  UPDATE schema_version
 	//  SET version = $1
 	SetSchemaVersion(ctx context.Context, version int32) error
+	//SetStreamOffline
+	//
+	//  UPDATE streams
+	//  SET online = false,
+	//      url = null
+	//  WHERE id = $1
+	SetStreamOffline(ctx context.Context, id string) error
+	//SetStreamOnline
+	//
+	//  UPDATE streams
+	//  SET online = true,
+	//      updated = $2
+	//  WHERE id = $1
+	SetStreamOnline(ctx context.Context, arg SetStreamOnlineParams) error
 	//SetUserPasswordHash
 	//
 	//  UPDATE users
@@ -101,13 +115,12 @@ type Querier interface {
 	//  SET player_names = $2
 	//  WHERE id = $1
 	UpdateStreamData(ctx context.Context, arg UpdateStreamDataParams) error
-	//UpdateStreamOnline
+	//UpdateStreamUrl
 	//
 	//  UPDATE streams
-	//  SET online = $2,
-	//      updated = $3
+	//  SET url = $2
 	//  WHERE id = $1
-	UpdateStreamOnline(ctx context.Context, arg UpdateStreamOnlineParams) error
+	UpdateStreamUrl(ctx context.Context, arg UpdateStreamUrlParams) error
 }
 
 var _ Querier = (*Queries)(nil)

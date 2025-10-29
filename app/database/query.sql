@@ -39,15 +39,26 @@ INSERT INTO streams(id, updated)
 VALUES ($1, $2)
 ON CONFLICT (id) DO NOTHING;
 
--- name: UpdateStreamOnline :exec
+-- name: SetStreamOnline :exec
 UPDATE streams
-SET online = $2,
-    updated = $3
+SET online = true,
+    updated = $2
+WHERE id = $1;
+
+-- name: SetStreamOffline :exec
+UPDATE streams
+SET online = false,
+    url = null
 WHERE id = $1;
 
 -- name: UpdateStreamData :exec
 UPDATE streams
 SET player_names = $2
+WHERE id = $1;
+
+-- name: UpdateStreamUrl :exec
+UPDATE streams
+SET url = $2
 WHERE id = $1;
 
 -- name: UpdateStaleStreams :exec

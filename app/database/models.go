@@ -22,6 +22,7 @@ type Setting struct {
 type Stream struct {
 	ID          string
 	Updated     time.Time
+	Url         *string
 	Online      bool
 	PlayerNames []string
 }

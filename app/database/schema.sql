@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS streams
 (
   id           VARCHAR(255) PRIMARY KEY,
   updated      TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  url          TEXT,
   online       BOOLEAN        NOT NULL default TRUE,
   player_names VARCHAR(255)[] NOT NULL DEFAULT '{}'
 );

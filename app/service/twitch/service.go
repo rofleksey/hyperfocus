@@ -61,9 +61,8 @@ func (s *Service) doFetch(ctx context.Context) error {
 				return oops.Errorf("CreateStream: %w", err)
 			}
 
-			if err = s.queries.UpdateStreamOnline(ctx, database.UpdateStreamOnlineParams{
+			if err = s.queries.SetStreamOnline(ctx, database.SetStreamOnlineParams{
 				ID:      strings.ToLower(stream.UserLogin),
-				Online:  true,
 				Updated: started,
 			}); err != nil {
 				return oops.Errorf("UpdateStreamOnline: %w", err)
@@ -130,6 +129,7 @@ func (s *Service) RunFetchLoop(ctx context.Context) {
 				)
 			}
 
+			// TODO: reduce time in production
 			select {
 			case <-ctx.Done():
 				return

@@ -92,14 +92,14 @@ func (q *Queries) DeleteUser(ctx context.Context, username string) error {
 }
 
 const getOnlineStreams = `-- name: GetOnlineStreams :many
-SELECT id, updated, online, player_names
+SELECT id, updated, url, online, player_names
 FROM streams
 WHERE online = true
 `
 
 // GetOnlineStreams
 //
-//	SELECT id, updated, online, player_names
+//	SELECT id, updated, url, online, player_names
 //	FROM streams
 //	WHERE online = true
 func (q *Queries) GetOnlineStreams(ctx context.Context) ([]Stream, error) {
@@ -114,6 +114,7 @@ func (q *Queries) GetOnlineStreams(ctx context.Context) ([]Stream, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Updated,
+			&i.Url,
 			&i.Online,
 			&i.PlayerNames,
 		); err != nil {
@@ -251,6 +252,47 @@ func (q *Queries) SetSchemaVersion(ctx context.Context, version int32) error {
 	return err
 }
 
+const setStreamOffline = `-- name: SetStreamOffline :exec
+UPDATE streams
+SET online = false,
+    url = null
+WHERE id = $1
+`
+
+// SetStreamOffline
+//
+//	UPDATE streams
+//	SET online = false,
+//	    url = null
+//	WHERE id = $1
+func (q *Queries) SetStreamOffline(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, setStreamOffline, id)
+	return err
+}
+
+const setStreamOnline = `-- name: SetStreamOnline :exec
+UPDATE streams
+SET online = true,
+    updated = $2
+WHERE id = $1
+`
+
+type SetStreamOnlineParams struct {
+	ID      string
+	Updated time.Time
+}
+
+// SetStreamOnline
+//
+//	UPDATE streams
+//	SET online = true,
+//	    updated = $2
+//	WHERE id = $1
+func (q *Queries) SetStreamOnline(ctx context.Context, arg SetStreamOnlineParams) error {
+	_, err := q.db.Exec(ctx, setStreamOnline, arg.ID, arg.Updated)
+	return err
+}
+
 const setUserPasswordHash = `-- name: SetUserPasswordHash :exec
 UPDATE users
 SET password_hash = $2
@@ -356,26 +398,23 @@ func (q *Queries) UpdateStreamData(ctx context.Context, arg UpdateStreamDataPara
 	return err
 }
 
-const updateStreamOnline = `-- name: UpdateStreamOnline :exec
+const updateStreamUrl = `-- name: UpdateStreamUrl :exec
 UPDATE streams
-SET online = $2,
-    updated = $3
+SET url = $2
 WHERE id = $1
 `
 
-type UpdateStreamOnlineParams struct {
-	ID      string
-	Online  bool
-	Updated time.Time
+type UpdateStreamUrlParams struct {
+	ID  string
+	Url *string
 }
 
-// UpdateStreamOnline
+// UpdateStreamUrl
 //
 //	UPDATE streams
-//	SET online = $2,
-//	    updated = $3
+//	SET url = $2
 //	WHERE id = $1
-func (q *Queries) UpdateStreamOnline(ctx context.Context, arg UpdateStreamOnlineParams) error {
-	_, err := q.db.Exec(ctx, updateStreamOnline, arg.ID, arg.Online, arg.Updated)
+func (q *Queries) UpdateStreamUrl(ctx context.Context, arg UpdateStreamUrlParams) error {
+	_, err := q.db.Exec(ctx, updateStreamUrl, arg.ID, arg.Url)
 	return err
 }
