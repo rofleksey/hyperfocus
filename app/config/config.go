@@ -149,7 +149,7 @@ func Load(configPath string) (*Config, error) {
 		result.DB.Database = "hyperfocus"
 	}
 	if result.Processing.ProcessWorkerCount == 0 {
-		result.Processing.ProcessWorkerCount = 8
+		result.Processing.ProcessWorkerCount = 10
 	}
 	if result.Processing.ProcessTimeout == 0 {
 		result.Processing.ProcessTimeout = 60

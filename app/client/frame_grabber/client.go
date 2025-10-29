@@ -48,6 +48,8 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		"Accept-Language: en-US,en;q=0.5",
 		"Origin: https://www.twitch.tv",
 		"Referer: https://www.twitch.tv/",
+		"X-Device-Id: twitch-web-wall-mason",
+		"Device-ID: twitch-web-wall-mason",
 	}, "\r\n")
 
 	cmd := exec.CommandContext(ctx, "ffmpeg",
@@ -116,6 +118,8 @@ func (c *Client) getAdDuration(ctx context.Context, m3u8URL string) (float64, er
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 	req.Header.Set("Origin", "https://www.twitch.tv")
 	req.Header.Set("Referer", "https://www.twitch.tv/")
+	req.Header.Set("X-Device-Id", "twitch-web-wall-mason")
+	req.Header.Set("Device-ID", "twitch-web-wall-mason")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
