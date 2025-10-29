@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"hyperfocus/app/config"
 	"image"
 	"image/png"
 	"io"
@@ -16,12 +17,16 @@ import (
 	"github.com/samber/do"
 )
 
+const clientId = "kimne78kx3ncx6brgo4mv6wki5h1ko"
+
 type Client struct {
+	cfg        *config.Config
 	httpClient *http.Client
 }
 
 func NewClient(di *do.Injector) (*Client, error) {
 	return &Client{
+		cfg: do.MustInvoke[*config.Config](di),
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -48,8 +53,9 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		"Accept-Language: en-US,en;q=0.5",
 		"Origin: https://www.twitch.tv",
 		"Referer: https://www.twitch.tv/",
-		"X-Device-Id: twitch-web-wall-mason",
-		"Device-ID: twitch-web-wall-mason",
+		"Client-Id:" + clientId,
+		//"Device-Id" + c.cfg.Twitch.BrowserDeviceID,
+		"Authorization: OAuth " + c.cfg.Twitch.BrowserOauthToken,
 	}, "\r\n")
 
 	cmd := exec.CommandContext(ctx, "ffmpeg",
@@ -61,6 +67,12 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		"-f", "image2pipe",
 		"-c", "png",
 		"-",
+		"-skip_frame", "nokey", // Skip non-keyframes for faster seeking
+		"-threads", "1", // Use single thread to avoid overhead
+		"-noaccurate_seek",    // Faster but less precise seeking
+		"-flags", "low_delay", // Reduce buffering delays
+		"-avioflags", "direct", // Reduce buffering
+		"-fflags", "nobuffer+flush_packets", // Minimal buffering
 	)
 
 	var stdout bytes.Buffer
@@ -118,8 +130,9 @@ func (c *Client) getAdDuration(ctx context.Context, m3u8URL string) (float64, er
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 	req.Header.Set("Origin", "https://www.twitch.tv")
 	req.Header.Set("Referer", "https://www.twitch.tv/")
-	req.Header.Set("X-Device-Id", "twitch-web-wall-mason")
-	req.Header.Set("Device-ID", "twitch-web-wall-mason")
+	req.Header.Set("Client-Id", clientId)
+	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
+	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -55,6 +55,9 @@ func (s *Service) doProcessing(ctx context.Context) error {
 	if err != nil {
 		return oops.Errorf("GetOnlineStreams: %v", err)
 	}
+	if len(streams) == 0 {
+		return nil
+	}
 
 	slog.Debug("Starting processing",
 		slog.Int("fetch_worker_count", s.cfg.Processing.FetchWorkerCount),
@@ -147,7 +150,7 @@ func (s *Service) runProcessWorker(ctx context.Context, taskChan chan *StreamTas
 }
 
 func (s *Service) fetchChannelFrame(ctx context.Context, task *StreamTask) (image.Image, error) {
-	//started := time.Now()
+	started := time.Now()
 	timeout := time.Duration(s.cfg.Processing.FetchTimeout) * time.Second
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -165,11 +168,11 @@ func (s *Service) fetchChannelFrame(ctx context.Context, task *StreamTask) (imag
 		return nil, nil
 	}
 
-	//slog.Debug("Finished fetching channel frame",
-	//	slog.Int("index", task.Index),
-	//	slog.String("channel_name", task.Stream.ID),
-	//	slog.Duration("duration", time.Since(started)),
-	//)
+	slog.Debug("Finished fetching channel frame",
+		slog.Int("index", task.Index),
+		slog.String("channel_name", task.Stream.ID),
+		slog.Duration("duration", time.Since(started)),
+	)
 
 	return frameImg, nil
 }

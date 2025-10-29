@@ -90,6 +90,10 @@ type Twitch struct {
 	Username string `yaml:"username" example:"PogChamp123" validate:"required"`
 	// User refresh token of the bot account
 	RefreshToken string `yaml:"refresh_token" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
+	// Browser GQL Oauth token
+	BrowserOauthToken string `yaml:"browser_oauth_token" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
+	// Browser Device ID
+	BrowserDeviceID string `yaml:"browser_device_id" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
 }
 
 type Paddle struct {
@@ -99,7 +103,7 @@ type Paddle struct {
 
 type Processing struct {
 	// Number of workers that fetch frames
-	FetchWorkerCount int `yaml:"fetch_worker_count" example:"32" validate:"required"`
+	FetchWorkerCount int `yaml:"fetch_worker_count" example:"16" validate:"required"`
 	// Fetch frame timeout
 	FetchTimeout int `yaml:"fetch_timeout" example:"60" validate:"required"`
 	// Number of workers that process the frames
@@ -155,7 +159,7 @@ func Load(configPath string) (*Config, error) {
 		result.Processing.ProcessTimeout = 60
 	}
 	if result.Processing.FetchWorkerCount == 0 {
-		result.Processing.FetchWorkerCount = 32
+		result.Processing.FetchWorkerCount = 16
 	}
 	if result.Processing.FetchTimeout == 0 {
 		result.Processing.FetchTimeout = 60

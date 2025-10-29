@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hyperfocus/app/config"
 	"io"
 	"net/http"
 	"strings"
@@ -18,11 +19,13 @@ const clientId = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 var ErrNotFound = errors.New("transcode does not exist - the stream is probably offline")
 
 type Client struct {
+	cfg    *config.Config
 	client *http.Client
 }
 
 func NewClient(di *do.Injector) (*Client, error) {
 	return &Client{
+		cfg: do.MustInvoke[*config.Config](di),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -55,6 +58,7 @@ func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, e
 		Login      string `json:"login"`
 		IsVod      bool   `json:"isVod"`
 		VodID      string `json:"vodID"`
+		Platform   string `json:"platform"`
 		PlayerType string `json:"playerType"`
 	}
 
@@ -67,7 +71,8 @@ func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, e
 	variablesData := variables{
 		Login:      id,
 		IsLive:     true,
-		PlayerType: "embed",
+		Platform:   "web",
+		PlayerType: "site",
 	}
 
 	requestData := requestBody{
@@ -93,6 +98,8 @@ func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, e
 
 	req.Header.Set("Client-Id", clientId)
 	req.Header.Set("Content-Type", "application/json")
+	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
+	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -119,7 +126,6 @@ func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, e
 	var response struct {
 		Data struct {
 			StreamPlaybackAccessToken *AccessToken `json:"streamPlaybackAccessToken"`
-			VideoPlaybackAccessToken  *AccessToken `json:"videoPlaybackAccessToken"`
 		} `json:"data"`
 	}
 
@@ -147,6 +153,10 @@ func (c *Client) getPlaylist(id string, accessToken *AccessToken) (string, error
 	if err != nil {
 		return "", fmt.Errorf("NewRequestWithContext: %w", err)
 	}
+	req.Header.Set("Client-Id", clientId)
+	req.Header.Set("Content-Type", "application/json")
+	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
+	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
 	resp, err := c.client.Do(req)
 	if err != nil {

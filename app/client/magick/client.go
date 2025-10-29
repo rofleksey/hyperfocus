@@ -17,7 +17,7 @@ func NewClient(di *do.Injector) (*Client, error) {
 	return &Client{}, nil
 }
 
-func (c *Client) CropImage(ctx context.Context, img image.Image, x, y, width, height int) (image.Image, error) {
+func (c *Client) CropAndProcessForUsernames(ctx context.Context, img image.Image) (image.Image, error) {
 	var inputBuf bytes.Buffer
 	if err := png.Encode(&inputBuf, img); err != nil {
 		return nil, fmt.Errorf("png.Encode: %w", err)
@@ -25,21 +25,7 @@ func (c *Client) CropImage(ctx context.Context, img image.Image, x, y, width, he
 
 	cmd := exec.CommandContext(ctx, "magick",
 		"png:-",
-		"-crop", fmt.Sprintf("%dx%d+%d+%d", width, height, x, y),
-		"png:-",
-	)
-
-	return c.executeMagickCommand(cmd, &inputBuf)
-}
-
-func (c *Client) ProcessImageForOCR(ctx context.Context, img image.Image) (image.Image, error) {
-	var inputBuf bytes.Buffer
-	if err := png.Encode(&inputBuf, img); err != nil {
-		return nil, fmt.Errorf("png.Encode: %w", err)
-	}
-
-	cmd := exec.CommandContext(ctx, "magick",
-		"png:-",
+		"-crop", fmt.Sprintf("%dx%d+%d+%d", 378-145, 835-420, 145, 420),
 		"-colorspace", "Gray",
 		"-auto-level",
 		"(", "+clone", "-lat", "8x8+5%", ")",

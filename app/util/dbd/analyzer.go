@@ -47,12 +47,7 @@ func (a *ImageAnalyzer) AnalyzeImage(ctx context.Context, img image.Image) (*Ana
 }
 
 func (a *ImageAnalyzer) analyzeUsernames(ctx context.Context, img image.Image) ([]string, error) {
-	hudImage, err := a.magickClient.CropImage(ctx, img, 145, 420, 378-145, 835-420)
-	if err != nil {
-		return nil, fmt.Errorf("CropImage: %w", err)
-	}
-
-	hudImage, err = a.magickClient.ProcessImageForOCR(ctx, hudImage)
+	hudImage, err := a.magickClient.CropAndProcessForUsernames(ctx, img)
 	if err != nil {
 		return nil, fmt.Errorf("ProcessImageForOCR: %w", err)
 	}
