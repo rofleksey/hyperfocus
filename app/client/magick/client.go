@@ -41,10 +41,12 @@ func (c *Client) ProcessImageForOCR(ctx context.Context, img image.Image) (image
 	cmd := exec.CommandContext(ctx, "magick",
 		"png:-",
 		"-colorspace", "Gray",
-		"-lat", "8x8+5%",
+		"-auto-level",
+		"(", "+clone", "-lat", "8x8+5%", ")",
+		"(", "+clone", "-threshold", "60%", ")",
+		"-compose", "darken", "-composite",
 		"-negate",
 		"-alpha", "off",
-		"-resize", "300%",
 		"png:-",
 	)
 

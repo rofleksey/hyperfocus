@@ -36,6 +36,26 @@ func TestImageAnalyzer_AnalyzeImage(t *testing.T) {
 			imagePath:         "test_dataset/bigwill82_1.png",
 			expectedUsernames: []string{"Bigwill82", "Flamingo0-_-", "Spooky Scary Fishl...", "Clappnz"},
 		},
+		{
+			imagePath:         "test_dataset/demuxa_1.png",
+			expectedUsernames: []string{"Demi", "Gabriel Soma_01", "LennoxNvm", "crstalnexus"},
+		},
+		{
+			imagePath:         "test_dataset/farmerjohn_1.png",
+			expectedUsernames: []string{"Alucard", "Renato Lyra", "Leon Scott Kennedy_01", "Nicolas Cage"},
+		},
+		{
+			imagePath:         "test_dataset/guinas_1.png",
+			expectedUsernames: []string{"Restaurante", "Klaush", "Demi_Joy", "Nea Karlsson"},
+		},
+		{
+			imagePath:         "test_dataset/sunnielemondrop_1.png",
+			expectedUsernames: []string{"SunnieLemonDrop", "Katt", "eroixks", "Pizzalover"},
+		},
+		{
+			imagePath:         "test_dataset/totalgranny_1.png",
+			expectedUsernames: []string{"TotalGranny", "tunneling drag queen", "Stitch7735", "Grim_zy"},
+		},
 	}
 
 	for _, tt := range tests {

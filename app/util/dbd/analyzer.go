@@ -9,6 +9,7 @@ import (
 	"hyperfocus/app/util"
 	"image"
 	"image/png"
+	"testing"
 
 	"github.com/samber/do"
 )
@@ -54,7 +55,7 @@ func (a *ImageAnalyzer) AnalyzeImage(ctx context.Context, img image.Image) (*Ana
 }
 
 func (a *ImageAnalyzer) analyzeUsernames(ctx context.Context, img image.Image) ([]string, error) {
-	hudImage, err := a.magickClient.CropImage(ctx, img, 145, 450, 378-145, 835-450)
+	hudImage, err := a.magickClient.CropImage(ctx, img, 145, 420, 378-145, 835-420)
 	if err != nil {
 		return nil, fmt.Errorf("CropImage: %w", err)
 	}
@@ -64,7 +65,9 @@ func (a *ImageAnalyzer) analyzeUsernames(ctx context.Context, img image.Image) (
 		return nil, fmt.Errorf("ProcessImageForOCR: %w", err)
 	}
 
-	util.SaveDebugImageLocal(hudImage, "hudImage")
+	if testing.Testing() {
+		util.SaveDebugImageLocal(hudImage, "hudImage")
+	}
 
 	res, err := a.paddleClient.Recognize(ctx, hudImage)
 	if err != nil {
