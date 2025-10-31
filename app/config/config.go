@@ -92,8 +92,6 @@ type Twitch struct {
 	RefreshToken string `yaml:"refresh_token" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
 	// Browser GQL Oauth token
 	BrowserOauthToken string `yaml:"browser_oauth_token" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
-	// Browser Device ID
-	BrowserDeviceID string `yaml:"browser_device_id" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
 }
 
 type Paddle struct {
@@ -106,6 +104,8 @@ type Processing struct {
 	FetchWorkerCount int `yaml:"fetch_worker_count" example:"16" validate:"required"`
 	// Fetch frame timeout
 	FetchTimeout int `yaml:"fetch_timeout" example:"60" validate:"required"`
+	// Frame buffer size
+	FrameBufferSize int `yaml:"frame_buffer_size" example:"512" validate:"required"`
 	// Number of workers that process the frames
 	ProcessWorkerCount int `yaml:"process_worker_count" example:"8" validate:"required"`
 	// Channel processing timeout in seconds
@@ -159,10 +159,13 @@ func Load(configPath string) (*Config, error) {
 		result.Processing.ProcessTimeout = 60
 	}
 	if result.Processing.FetchWorkerCount == 0 {
-		result.Processing.FetchWorkerCount = 16
+		result.Processing.FetchWorkerCount = 1
 	}
 	if result.Processing.FetchTimeout == 0 {
 		result.Processing.FetchTimeout = 60
+	}
+	if result.Processing.FrameBufferSize == 0 {
+		result.Processing.FrameBufferSize = 512
 	}
 	if result.Server.HttpPort == 0 {
 		result.Server.HttpPort = 8080

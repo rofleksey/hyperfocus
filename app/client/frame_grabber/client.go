@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"hyperfocus/app/config"
 	"image"
-	"image/png"
 	"io"
 	"log/slog"
 	"net/http"
 	"os/exec"
 	"strings"
 	"time"
+
+	"golang.org/x/image/bmp"
 
 	"github.com/samber/do"
 )
@@ -44,6 +45,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		skipTime = fmt.Sprintf("%.1f", adDuration+1)
 		slog.Debug("Detected ads, skipping...",
 			slog.String("duration", skipTime),
+			slog.String("url", url),
 		)
 	}
 
@@ -65,7 +67,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		"-vf", "scale=1920:1080",
 		"-vframes", "1",
 		"-f", "image2pipe",
-		"-c", "png",
+		"-c", "bmp",
 		"-",
 		"-skip_frame", "nokey", // Skip non-keyframes for faster seeking
 		"-threads", "1", // Use single thread to avoid overhead
@@ -105,7 +107,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		return nil, fmt.Errorf("no frame data captured from ffmpeg")
 	}
 
-	result, err := png.Decode(bytes.NewReader(output))
+	result, err := bmp.Decode(bytes.NewReader(output))
 	if err != nil {
 		return nil, fmt.Errorf("invalid PNG data from ffmpeg: %v", err)
 	}

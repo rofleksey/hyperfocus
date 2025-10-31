@@ -68,7 +68,7 @@ func (s *Service) doProcessing(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	fetchChan := make(chan *StreamTask)
-	processChanInternal := make(chan *StreamTask)
+	processChanInternal := make(chan *StreamTask, s.cfg.Processing.FrameBufferSize)
 	processChan := make(chan *StreamTask)
 
 	for range s.cfg.Processing.FetchWorkerCount {
