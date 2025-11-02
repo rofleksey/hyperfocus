@@ -49,9 +49,9 @@ func (s *Service) doFetch(ctx context.Context) error {
 			break
 		}
 
-		slog.Debug("Got a chunk of streams",
-			slog.Int("count", len(chunk.Streams)),
-		)
+		//slog.Debug("Got a chunk of streams",
+		//	slog.Int("count", len(chunk.Streams)),
+		//)
 
 		for _, stream := range chunk.Streams {
 			if err = s.queries.CreateStream(ctx, database.CreateStreamParams{
@@ -82,7 +82,6 @@ func (s *Service) doFetch(ctx context.Context) error {
 	if err := s.queries.UpdateStaleStreams(ctx, started); err != nil {
 		return oops.Errorf("UpdateStaleStreams: %w", err)
 	}
-	slog.Debug("Marked stale streams as offline")
 
 	slog.Debug("Fetch finished",
 		slog.Duration("duration", time.Since(started)),

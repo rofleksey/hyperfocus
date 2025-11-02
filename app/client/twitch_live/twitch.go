@@ -8,6 +8,7 @@ import (
 	"hyperfocus/app/config"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,16 +20,12 @@ const clientId = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 var ErrNotFound = errors.New("transcode does not exist - the stream is probably offline")
 
 type Client struct {
-	cfg    *config.Config
-	client *http.Client
+	cfg *config.Config
 }
 
 func NewClient(di *do.Injector) (*Client, error) {
 	return &Client{
 		cfg: do.MustInvoke[*config.Config](di),
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
 	}, nil
 }
 
@@ -43,7 +40,7 @@ type StreamQuality struct {
 	URL        string `json:"url"`
 }
 
-func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, error) {
+func (c *Client) getAccessToken(ctx context.Context, client *http.Client, id string) (*AccessToken, error) {
 	type persistedQuery struct {
 		Version    int    `json:"version"`
 		Sha256Hash string `json:"sha256Hash"`
@@ -101,7 +98,7 @@ func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, e
 	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
 	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
-	resp, err := c.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Do: %w", err)
 	}
@@ -136,7 +133,7 @@ func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, e
 	return response.Data.StreamPlaybackAccessToken, nil
 }
 
-func (c *Client) getPlaylist(id string, accessToken *AccessToken) (string, error) {
+func (c *Client) getPlaylist(id string, client *http.Client, accessToken *AccessToken) (string, error) {
 	if accessToken == nil {
 		return "", fmt.Errorf("got nil access token")
 	}
@@ -158,7 +155,7 @@ func (c *Client) getPlaylist(id string, accessToken *AccessToken) (string, error
 	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
 	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
-	resp, err := c.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("Do: %w", err)
 	}
@@ -219,13 +216,26 @@ func parsePlaylist(playlist string) []StreamQuality {
 	return parsedPlaylist
 }
 
-func (c *Client) GetM3U8(ctx context.Context, channel string) ([]StreamQuality, error) {
-	accessToken, err := c.getAccessToken(ctx, channel)
+func (c *Client) GetM3U8(ctx context.Context, channel, proxy string) ([]StreamQuality, error) {
+	proxyUrl, err := url.Parse(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("proxyurl.Parse: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyUrl),
+		},
+	}
+	defer client.CloseIdleConnections()
+
+	accessToken, err := c.getAccessToken(ctx, client, channel)
 	if err != nil {
 		return nil, fmt.Errorf("getAccessToken: %w", err)
 	}
 
-	playlist, err := c.getPlaylist(channel, accessToken)
+	playlist, err := c.getPlaylist(channel, client, accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("getPlaylist: %w", err)
 	}

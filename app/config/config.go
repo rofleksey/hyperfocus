@@ -24,6 +24,7 @@ type Config struct {
 	Twitch     Twitch     `yaml:"twitch" envPrefix:"TWITCH_"`
 	Paddle     Paddle     `yaml:"paddle" envPrefix:"PADDLE_"`
 	Processing Processing `yaml:"processing" envPrefix:"PROCESSING_"`
+	Proxy      Proxy      `yaml:"proxy" envPrefix:"PROXY_"`
 	Server     Server     `yaml:"server" envPrefix:"SERVER_"`
 }
 
@@ -92,6 +93,8 @@ type Twitch struct {
 	RefreshToken string `yaml:"refresh_token" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
 	// Browser GQL Oauth token
 	BrowserOauthToken string `yaml:"browser_oauth_token" example:"v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567" validate:"required"`
+	// Do Ads check
+	AdsCheck bool `yaml:"ads_check" example:"false"`
 }
 
 type Paddle struct {
@@ -115,6 +118,11 @@ type Processing struct {
 type Server struct {
 	// Web server port
 	HttpPort int `yaml:"http_port" env:"HTTP_PORT" example:"8080" validate:"required"`
+}
+
+type Proxy struct {
+	// List of proxies
+	List []string `yaml:"list" env:"LIST" validate:"required"`
 }
 
 func Load(configPath string) (*Config, error) {
@@ -153,19 +161,19 @@ func Load(configPath string) (*Config, error) {
 		result.DB.Database = "hyperfocus"
 	}
 	if result.Processing.ProcessWorkerCount == 0 {
-		result.Processing.ProcessWorkerCount = 10
+		result.Processing.ProcessWorkerCount = 12
 	}
 	if result.Processing.ProcessTimeout == 0 {
 		result.Processing.ProcessTimeout = 60
 	}
 	if result.Processing.FetchWorkerCount == 0 {
-		result.Processing.FetchWorkerCount = 1
+		result.Processing.FetchWorkerCount = 32
 	}
 	if result.Processing.FetchTimeout == 0 {
 		result.Processing.FetchTimeout = 60
 	}
 	if result.Processing.FrameBufferSize == 0 {
-		result.Processing.FrameBufferSize = 512
+		result.Processing.FrameBufferSize = 256
 	}
 	if result.Server.HttpPort == 0 {
 		result.Server.HttpPort = 8080

@@ -1,14 +1,12 @@
 package dbd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"hyperfocus/app/client/magick"
 	"hyperfocus/app/client/paddle"
 	"hyperfocus/app/util"
 	"image"
-	"image/png"
 	"testing"
 
 	"github.com/samber/do"
@@ -31,11 +29,6 @@ type AnalyzeResult struct {
 }
 
 func (a *ImageAnalyzer) AnalyzeImage(ctx context.Context, img image.Image) (*AnalyzeResult, error) {
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return nil, fmt.Errorf("failed to encode image: %w", err)
-	}
-
 	usernames, err := a.analyzeUsernames(ctx, img)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze usernames: %w", err)

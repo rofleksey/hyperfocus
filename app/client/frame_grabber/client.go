@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -21,21 +22,17 @@ import (
 const clientId = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 
 type Client struct {
-	cfg        *config.Config
-	httpClient *http.Client
+	cfg *config.Config
 }
 
 func NewClient(di *do.Injector) (*Client, error) {
 	return &Client{
 		cfg: do.MustInvoke[*config.Config](di),
-		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
-		},
 	}, nil
 }
 
-func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image, error) {
-	adDuration, err := c.getAdDuration(ctx, url)
+func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (image.Image, error) {
+	adDuration, err := c.getAdDuration(ctx, url, proxy)
 	if err != nil {
 		return nil, fmt.Errorf("getAdDuration: %v", err)
 	}
@@ -56,12 +53,12 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		"Origin: https://www.twitch.tv",
 		"Referer: https://www.twitch.tv/",
 		"Client-Id:" + clientId,
-		//"Device-Id" + c.cfg.Twitch.BrowserDeviceID,
 		"Authorization: OAuth " + c.cfg.Twitch.BrowserOauthToken,
 	}, "\r\n")
 
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-headers", headers,
+		"-http_proxy", proxy,
 		"-i", url,
 		"-ss", skipTime,
 		"-vf", "scale=1920:1080",
@@ -70,7 +67,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 		"-c", "bmp",
 		"-",
 		"-skip_frame", "nokey", // Skip non-keyframes for faster seeking
-		"-threads", "1", // Use single thread to avoid overhead
+		//"-threads", "1", // Use single thread to avoid overhead
 		"-noaccurate_seek",    // Faster but less precise seeking
 		"-flags", "low_delay", // Reduce buffering delays
 		"-avioflags", "direct", // Reduce buffering
@@ -93,7 +90,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 	}()
 
 	select {
-	case <-time.After(time.Minute):
+	case <-time.After(30 * time.Second):
 		cmd.Process.Kill()
 		return nil, fmt.Errorf("ffmpeg timeout after 30 seconds")
 	case err := <-done:
@@ -113,14 +110,31 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url string) (image.Image
 	}
 
 	size := result.Bounds().Size()
-	if size.X == 0 && size.Y == 0 {
+	if size.X <= 0 || size.Y <= 0 {
 		return nil, fmt.Errorf("invalid image size")
 	}
 
 	return result, nil
 }
 
-func (c *Client) getAdDuration(ctx context.Context, m3u8URL string) (float64, error) {
+func (c *Client) getAdDuration(ctx context.Context, m3u8URL, proxy string) (float64, error) {
+	if !c.cfg.Twitch.AdsCheck {
+		return 0.0, nil
+	}
+
+	proxyUrl, err := url.Parse(proxy)
+	if err != nil {
+		return 0, fmt.Errorf("proxyurl.Parse: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyUrl),
+		},
+	}
+	defer client.CloseIdleConnections()
+
 	req, err := http.NewRequestWithContext(ctx, "GET", m3u8URL, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %v", err)
@@ -133,10 +147,9 @@ func (c *Client) getAdDuration(ctx context.Context, m3u8URL string) (float64, er
 	req.Header.Set("Origin", "https://www.twitch.tv")
 	req.Header.Set("Referer", "https://www.twitch.tv/")
 	req.Header.Set("Client-Id", clientId)
-	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
 	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch m3u8: %v", err)
 	}

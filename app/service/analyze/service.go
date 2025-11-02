@@ -10,6 +10,7 @@ import (
 	"hyperfocus/app/util/telemetry"
 	"image"
 	"log/slog"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -62,14 +63,15 @@ func (s *Service) doProcessing(ctx context.Context) error {
 	slog.Debug("Starting processing",
 		slog.Int("fetch_worker_count", s.cfg.Processing.FetchWorkerCount),
 		slog.Int("process_worker_count", s.cfg.Processing.ProcessWorkerCount),
+		slog.Int("proxy_count", len(s.cfg.Proxy.List)),
 		slog.Int("task_count", len(streams)),
 	)
 
 	var wg sync.WaitGroup
 
-	fetchChan := make(chan *StreamTask)
+	fetchChan := make(chan *StreamTask, s.cfg.Processing.FetchWorkerCount)
 	processChanInternal := make(chan *StreamTask, s.cfg.Processing.FrameBufferSize)
-	processChan := make(chan *StreamTask)
+	processChan := make(chan *StreamTask, s.cfg.Processing.ProcessWorkerCount)
 
 	for range s.cfg.Processing.FetchWorkerCount {
 		wg.Go(func() {
@@ -114,6 +116,7 @@ func (s *Service) doProcessing(ctx context.Context) error {
 	slog.Debug("Processing finished",
 		slog.Duration("duration", time.Since(started)),
 		slog.Int("count", len(streams)),
+		slog.Float64("rate", float64(len(streams))/time.Since(started).Seconds()),
 	)
 
 	return nil
@@ -150,29 +153,29 @@ func (s *Service) runProcessWorker(ctx context.Context, taskChan chan *StreamTas
 }
 
 func (s *Service) fetchChannelFrame(ctx context.Context, task *StreamTask) (image.Image, error) {
-	started := time.Now()
+	//started := time.Now()
 	timeout := time.Duration(s.cfg.Processing.FetchTimeout) * time.Second
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	frameImg, err := s.obtainStreamFrame(ctx, task.Stream)
+	proxy := s.cfg.Proxy.List[rand.Intn(len(s.cfg.Proxy.List))]
+
+	frameImg, err := s.obtainStreamFrame(ctx, task.Stream, proxy)
 	if err != nil {
 		return nil, oops.Errorf("obtainStreamFrame: %v", err)
 	}
 
+	// skipping offline channel
 	if frameImg == nil {
-		slog.Debug("Skipping offline channel",
-			slog.String("channel_name", task.Stream.ID),
-		)
 		return nil, nil
 	}
 
-	slog.Debug("Finished fetching channel frame",
-		slog.Int("index", task.Index),
-		slog.String("channel_name", task.Stream.ID),
-		slog.Duration("duration", time.Since(started)),
-	)
+	//slog.Debug("Finished fetching channel frame",
+	//	slog.Int("index", task.Index),
+	//	slog.String("channel_name", task.Stream.ID),
+	//	slog.Duration("duration", time.Since(started)),
+	//)
 
 	return frameImg, nil
 }
@@ -187,7 +190,7 @@ func (s *Service) processChannel(ctx context.Context, task *StreamTask) error {
 		return nil
 	}
 
-	started := time.Now()
+	//started := time.Now()
 	timeout := time.Duration(s.cfg.Processing.ProcessTimeout) * time.Second
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -205,12 +208,12 @@ func (s *Service) processChannel(ctx context.Context, task *StreamTask) error {
 		return oops.Errorf("UpdateStreamData: %v", err)
 	}
 
-	slog.Debug("Finished processing channel",
-		slog.Int("index", task.Index),
-		slog.String("channel_name", task.Stream.ID),
-		slog.Duration("duration", time.Since(started)),
-		slog.Int("usernames_count", len(data.Usernames)),
-	)
+	//slog.Debug("Finished processing channel",
+	//	slog.Int("index", task.Index),
+	//	slog.String("channel_name", task.Stream.ID),
+	//	slog.Duration("duration", time.Since(started)),
+	//	slog.Int("usernames_count", len(data.Usernames)),
+	//)
 
 	//if meg.Environment != "production" && len(data.Usernames) != 4 {
 	//	util.SaveDebugImage(frameImg, fmt.Sprintf("%s-%d", task.Stream.ID, len(data.Usernames)))

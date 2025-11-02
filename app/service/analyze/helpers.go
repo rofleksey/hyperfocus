@@ -22,10 +22,10 @@ type StreamTask struct {
 	Error bool
 }
 
-func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream) (image.Image, error) {
+func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream, proxy string) (image.Image, error) {
 	// try to use cached stream url first
 	if stream.Url != nil {
-		frameImg, err := s.frameGrabber.GrabFrameFromM3U8(ctx, *stream.Url)
+		frameImg, err := s.frameGrabber.GrabFrameFromM3U8(ctx, *stream.Url, proxy)
 		if err == nil {
 			return frameImg, nil
 		}
@@ -35,11 +35,11 @@ func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream)
 	//	return nil, fmt.Errorf("liveLimiter.Wait: %w", err)
 	//}
 
-	streamQualities, err := s.liveClient.GetM3U8(ctx, stream.ID)
+	streamQualities, err := s.liveClient.GetM3U8(ctx, stream.ID, proxy)
 	if err != nil {
 		if errors.Is(err, twitch_live.ErrNotFound) {
 			if err = s.queries.SetStreamOffline(ctx, stream.ID); err != nil {
-				return nil, oops.Errorf("UpdateStreamOnline: %v", err)
+				return nil, oops.Errorf("SetStreamOffline: %v", err)
 			}
 
 			return nil, nil
@@ -58,7 +58,7 @@ func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream)
 
 	url := quality.URL
 
-	frameImg, err := s.frameGrabber.GrabFrameFromM3U8(ctx, url)
+	frameImg, err := s.frameGrabber.GrabFrameFromM3U8(ctx, url, proxy)
 	if err != nil {
 		return nil, oops.Errorf("GrabFrameFromM3U8: %v", err)
 	}
