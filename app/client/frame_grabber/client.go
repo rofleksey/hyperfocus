@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 	"hyperfocus/app/config"
+	"hyperfocus/app/util"
 	"image"
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -37,7 +37,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (imag
 		return nil, fmt.Errorf("getAdDuration: %v", err)
 	}
 
-	skipTime := "0"
+	skipTime := ""
 	if adDuration > 0 {
 		skipTime = fmt.Sprintf("%.1f", adDuration+1)
 		slog.Debug("Detected ads, skipping...",
@@ -56,11 +56,21 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (imag
 		"Authorization: OAuth " + c.cfg.Twitch.BrowserOauthToken,
 	}, "\r\n")
 
-	cmd := exec.CommandContext(ctx, "ffmpeg",
+	args := []string{
 		"-headers", headers,
-		"-http_proxy", proxy,
-		"-i", url,
-		"-ss", skipTime,
+	}
+
+	if proxy != "" {
+		args = append(args, "-http_proxy", proxy)
+	}
+
+	args = append(args, "-i", url)
+
+	if skipTime != "" {
+		args = append(args, "-ss", skipTime)
+	}
+
+	args = append(args,
 		"-vf", "scale=1920:1080",
 		"-vframes", "1",
 		"-f", "image2pipe",
@@ -73,6 +83,8 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (imag
 		"-avioflags", "direct", // Reduce buffering
 		"-fflags", "nobuffer+flush_packets", // Minimal buffering
 	)
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -122,16 +134,9 @@ func (c *Client) getAdDuration(ctx context.Context, m3u8URL, proxy string) (floa
 		return 0.0, nil
 	}
 
-	proxyUrl, err := url.Parse(proxy)
+	client, err := util.CreateProxyHttpClient(proxy)
 	if err != nil {
-		return 0, fmt.Errorf("proxyurl.Parse: %w", err)
-	}
-
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyUrl),
-		},
+		return 0.0, fmt.Errorf("CreateProxyHttpClient: %v", err)
 	}
 	defer client.CloseIdleConnections()
 

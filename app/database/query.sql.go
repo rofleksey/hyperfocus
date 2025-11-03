@@ -252,24 +252,6 @@ func (q *Queries) SetSchemaVersion(ctx context.Context, version int32) error {
 	return err
 }
 
-const setStreamOffline = `-- name: SetStreamOffline :exec
-UPDATE streams
-SET online = false,
-    url = null
-WHERE id = $1
-`
-
-// SetStreamOffline
-//
-//	UPDATE streams
-//	SET online = false,
-//	    url = null
-//	WHERE id = $1
-func (q *Queries) SetStreamOffline(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, setStreamOffline, id)
-	return err
-}
-
 const setStreamOnline = `-- name: SetStreamOnline :exec
 UPDATE streams
 SET online = true,

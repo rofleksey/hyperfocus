@@ -36,9 +36,9 @@ func (s *Service) doFetch(ctx context.Context) error {
 	slog.Debug("Starting fetch")
 
 	started := time.Now()
-	count := 0
 
 	var after string
+	streamMap := make(map[string]struct{})
 
 	for {
 		chunk, err := s.fetchChunkWithRetry(ctx, after)
@@ -54,15 +54,18 @@ func (s *Service) doFetch(ctx context.Context) error {
 		//)
 
 		for _, stream := range chunk.Streams {
+			streamID := strings.ToLower(stream.UserLogin)
+			streamMap[streamID] = struct{}{}
+
 			if err = s.queries.CreateStream(ctx, database.CreateStreamParams{
-				ID:      strings.ToLower(stream.UserLogin),
+				ID:      streamID,
 				Updated: started,
 			}); err != nil {
 				return oops.Errorf("CreateStream: %w", err)
 			}
 
 			if err = s.queries.SetStreamOnline(ctx, database.SetStreamOnlineParams{
-				ID:      strings.ToLower(stream.UserLogin),
+				ID:      streamID,
 				Updated: started,
 			}); err != nil {
 				return oops.Errorf("UpdateStreamOnline: %w", err)
@@ -70,7 +73,6 @@ func (s *Service) doFetch(ctx context.Context) error {
 		}
 
 		after = chunk.Pagination.Cursor
-		count += len(chunk.Streams)
 
 		select {
 		case <-ctx.Done():
@@ -85,7 +87,7 @@ func (s *Service) doFetch(ctx context.Context) error {
 
 	slog.Debug("Fetch finished",
 		slog.Duration("duration", time.Since(started)),
-		slog.Int("count", count),
+		slog.Int("count", len(streamMap)),
 	)
 
 	return nil

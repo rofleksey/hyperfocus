@@ -69,13 +69,6 @@ type Querier interface {
 	//  UPDATE schema_version
 	//  SET version = $1
 	SetSchemaVersion(ctx context.Context, version int32) error
-	//SetStreamOffline
-	//
-	//  UPDATE streams
-	//  SET online = false,
-	//      url = null
-	//  WHERE id = $1
-	SetStreamOffline(ctx context.Context, id string) error
 	//SetStreamOnline
 	//
 	//  UPDATE streams

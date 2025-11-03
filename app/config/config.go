@@ -122,7 +122,7 @@ type Server struct {
 
 type Proxy struct {
 	// List of proxies
-	List []string `yaml:"list" env:"LIST" validate:"required"`
+	List []string `yaml:"list" env:"LIST"`
 }
 
 func Load(configPath string) (*Config, error) {
@@ -161,7 +161,7 @@ func Load(configPath string) (*Config, error) {
 		result.DB.Database = "hyperfocus"
 	}
 	if result.Processing.ProcessWorkerCount == 0 {
-		result.Processing.ProcessWorkerCount = 12
+		result.Processing.ProcessWorkerCount = 10
 	}
 	if result.Processing.ProcessTimeout == 0 {
 		result.Processing.ProcessTimeout = 60

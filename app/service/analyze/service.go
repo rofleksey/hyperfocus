@@ -18,7 +18,6 @@ import (
 	"github.com/rofleksey/meg"
 	"github.com/samber/do"
 	"github.com/samber/oops"
-	"golang.org/x/time/rate"
 )
 
 var serviceName = "analyze"
@@ -30,8 +29,6 @@ type Service struct {
 	liveClient    *twitch_live.Client
 	frameGrabber  *frame_grabber.Client
 	imageAnalyzer *dbd.ImageAnalyzer
-
-	liveLimiter *rate.Limiter
 }
 
 func New(di *do.Injector) (*Service, error) {
@@ -44,8 +41,6 @@ func New(di *do.Injector) (*Service, error) {
 		liveClient:    do.MustInvoke[*twitch_live.Client](di),
 		frameGrabber:  do.MustInvoke[*frame_grabber.Client](di),
 		imageAnalyzer: do.MustInvoke[*dbd.ImageAnalyzer](di),
-
-		liveLimiter: rate.NewLimiter(rate.Limit(1), 1), // 1rps
 	}, nil
 }
 
@@ -159,7 +154,10 @@ func (s *Service) fetchChannelFrame(ctx context.Context, task *StreamTask) (imag
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	proxy := s.cfg.Proxy.List[rand.Intn(len(s.cfg.Proxy.List))]
+	var proxy string
+	if len(s.cfg.Proxy.List) > 0 {
+		proxy = s.cfg.Proxy.List[rand.Intn(len(s.cfg.Proxy.List))]
+	}
 
 	frameImg, err := s.obtainStreamFrame(ctx, task.Stream, proxy)
 	if err != nil {
@@ -235,13 +233,6 @@ func (s *Service) RunProcessLoop(ctx context.Context) {
 				slog.ErrorContext(ctx, "Processing failed",
 					slog.Any("error", err),
 				)
-			}
-
-			// TODO: remove in production
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Minute):
 			}
 		}
 	}()

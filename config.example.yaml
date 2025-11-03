@@ -61,16 +61,35 @@ twitch:
   # User refresh token of the bot account
   refresh_token: v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567
 
+  # Browser GQL Oauth token
+  browser_oauth_token: v1.abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567
+
+  # Do Ads check
+  ads_check: true
+
 paddle:
   # PaddleOCR service base URL
   base_url: "http://localhost:5000"
 
 processing:
-  # Number of workers to process the live streams
-  worker_count: 10
+  # Number of workers that fetch frames
+  fetch_worker_count: 16
+
+  # Fetch frame timeout
+  fetch_timeout: 60
+
+  # Frame buffer size
+  frame_buffer_size: 512
+
+  # Number of workers that process the frames
+  process_worker_count: 8
 
   # Channel processing timeout in seconds
-  timeout: 60
+  process_timeout: 60
+
+proxy:
+  # List of proxies
+  list: [value1, value2]
 
 server:
   # Web server port

@@ -45,12 +45,6 @@ SET online = true,
     updated = $2
 WHERE id = $1;
 
--- name: SetStreamOffline :exec
-UPDATE streams
-SET online = false,
-    url = null
-WHERE id = $1;
-
 -- name: UpdateStreamData :exec
 UPDATE streams
 SET player_names = $2

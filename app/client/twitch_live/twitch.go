@@ -6,11 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"hyperfocus/app/config"
+	"hyperfocus/app/util"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/samber/do"
 )
@@ -217,16 +216,9 @@ func parsePlaylist(playlist string) []StreamQuality {
 }
 
 func (c *Client) GetM3U8(ctx context.Context, channel, proxy string) ([]StreamQuality, error) {
-	proxyUrl, err := url.Parse(proxy)
+	client, err := util.CreateProxyHttpClient(proxy)
 	if err != nil {
-		return nil, fmt.Errorf("proxyurl.Parse: %w", err)
-	}
-
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyUrl),
-		},
+		return nil, fmt.Errorf("CreateProxyHttpClient: %w", err)
 	}
 	defer client.CloseIdleConnections()
 

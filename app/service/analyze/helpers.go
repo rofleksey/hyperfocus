@@ -38,10 +38,6 @@ func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream,
 	streamQualities, err := s.liveClient.GetM3U8(ctx, stream.ID, proxy)
 	if err != nil {
 		if errors.Is(err, twitch_live.ErrNotFound) {
-			if err = s.queries.SetStreamOffline(ctx, stream.ID); err != nil {
-				return nil, oops.Errorf("SetStreamOffline: %v", err)
-			}
-
 			return nil, nil
 		}
 
