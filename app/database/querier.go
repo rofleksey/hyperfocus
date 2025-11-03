@@ -10,29 +10,11 @@ import (
 )
 
 type Querier interface {
-	//CountUsers
-	//
-	//  SELECT COUNT(*)
-	//  FROM users
-	//  WHERE username ILIKE $1
-	CountUsers(ctx context.Context, query string) (int64, error)
 	//CreateStream
 	//
 	//  INSERT INTO streams(id, updated)
-	//  VALUES ($1, $2)
-	//  ON CONFLICT (id) DO NOTHING
+	//  VALUES ($1, $2) ON CONFLICT (id) DO NOTHING
 	CreateStream(ctx context.Context, arg CreateStreamParams) error
-	//CreateUser
-	//
-	//  INSERT INTO users (username, password_hash, created, roles)
-	//  VALUES ($1, $2, $3, $4)
-	CreateUser(ctx context.Context, arg CreateUserParams) error
-	//DeleteUser
-	//
-	//  DELETE
-	//  FROM users
-	//  WHERE username = $1
-	DeleteUser(ctx context.Context, username string) error
 	//GetOnlineStreams
 	//
 	//  SELECT id, updated, url, online, player_names
@@ -44,26 +26,19 @@ type Querier interface {
 	//  SELECT version
 	//  FROM schema_version
 	GetSchemaVersion(ctx context.Context) (int32, error)
-	//GetSettings
+	//SearchStreamsByNickname
 	//
-	//  SELECT id, api_key, notification_urls, autodelete_days
-	//  FROM settings
-	//  WHERE id = 1
-	GetSettings(ctx context.Context) (Setting, error)
-	//GetUser
-	//
-	//  SELECT username, created, password_hash, roles, last_session_reset
-	//  FROM users
-	//  WHERE username = $1
-	GetUser(ctx context.Context, username string) (User, error)
-	//SearchUsers
-	//
-	//  SELECT username, created, password_hash, roles, last_session_reset
-	//  FROM users
-	//  WHERE username ILIKE $3
-	//  ORDER BY username
-	//  OFFSET $1 LIMIT $2
-	SearchUsers(ctx context.Context, arg SearchUsersParams) ([]User, error)
+	//  SELECT id, updated, url, online, player_names
+	//  FROM streams
+	//  WHERE online = true
+	//    AND EXISTS (SELECT 1
+	//                FROM unnest(player_names) AS nickname
+	//                WHERE levenshtein(lower(nickname), lower($1::VARCHAR(255))) < $2::INTEGER OR
+	//                                                                                            lower(nickname) LIKE '%' ||
+	//                                                                                                                 lower($1::VARCHAR(255)) ||
+	//                                                                                                                 '%')
+	//    LIMIT $3::INTEGER
+	SearchStreamsByNickname(ctx context.Context, arg SearchStreamsByNicknameParams) ([]Stream, error)
 	//SetSchemaVersion
 	//
 	//  UPDATE schema_version
@@ -72,30 +47,10 @@ type Querier interface {
 	//SetStreamOnline
 	//
 	//  UPDATE streams
-	//  SET online = true,
+	//  SET online  = true,
 	//      updated = $2
 	//  WHERE id = $1
 	SetStreamOnline(ctx context.Context, arg SetStreamOnlineParams) error
-	//SetUserPasswordHash
-	//
-	//  UPDATE users
-	//  SET password_hash = $2
-	//  WHERE username = $1
-	SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHashParams) error
-	//SetUserRoles
-	//
-	//  UPDATE users
-	//  SET roles = $2
-	//  WHERE username = $1
-	SetUserRoles(ctx context.Context, arg SetUserRolesParams) error
-	//UpdateSettings
-	//
-	//  UPDATE settings
-	//  SET api_key           = $1,
-	//      notification_urls = $2,
-	//      autodelete_days   = $3
-	//  WHERE id = 1
-	UpdateSettings(ctx context.Context, arg UpdateSettingsParams) error
 	//UpdateStaleStreams
 	//
 	//  UPDATE streams

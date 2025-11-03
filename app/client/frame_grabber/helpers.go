@@ -94,7 +94,7 @@ func (c *Client) extractDuration(line string) (float64, error) {
 
 	duration, err := strconv.ParseFloat(durPart, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse duration '%s': %v", durPart, err)
+		return 0, fmt.Errorf("failed to parse duration '%s': %w", durPart, err)
 	}
 
 	return duration, nil

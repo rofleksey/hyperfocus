@@ -10,28 +10,9 @@ import (
 	"time"
 )
 
-const countUsers = `-- name: CountUsers :one
-SELECT COUNT(*)
-FROM users
-WHERE username ILIKE $1
-`
-
-// CountUsers
-//
-//	SELECT COUNT(*)
-//	FROM users
-//	WHERE username ILIKE $1
-func (q *Queries) CountUsers(ctx context.Context, query string) (int64, error) {
-	row := q.db.QueryRow(ctx, countUsers, query)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createStream = `-- name: CreateStream :exec
 INSERT INTO streams(id, updated)
-VALUES ($1, $2)
-ON CONFLICT (id) DO NOTHING
+VALUES ($1, $2) ON CONFLICT (id) DO NOTHING
 `
 
 type CreateStreamParams struct {
@@ -42,52 +23,9 @@ type CreateStreamParams struct {
 // CreateStream
 //
 //	INSERT INTO streams(id, updated)
-//	VALUES ($1, $2)
-//	ON CONFLICT (id) DO NOTHING
+//	VALUES ($1, $2) ON CONFLICT (id) DO NOTHING
 func (q *Queries) CreateStream(ctx context.Context, arg CreateStreamParams) error {
 	_, err := q.db.Exec(ctx, createStream, arg.ID, arg.Updated)
-	return err
-}
-
-const createUser = `-- name: CreateUser :exec
-INSERT INTO users (username, password_hash, created, roles)
-VALUES ($1, $2, $3, $4)
-`
-
-type CreateUserParams struct {
-	Username     string
-	PasswordHash string
-	Created      time.Time
-	Roles        []string
-}
-
-// CreateUser
-//
-//	INSERT INTO users (username, password_hash, created, roles)
-//	VALUES ($1, $2, $3, $4)
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
-	_, err := q.db.Exec(ctx, createUser,
-		arg.Username,
-		arg.PasswordHash,
-		arg.Created,
-		arg.Roles,
-	)
-	return err
-}
-
-const deleteUser = `-- name: DeleteUser :exec
-DELETE
-FROM users
-WHERE username = $1
-`
-
-// DeleteUser
-//
-//	DELETE
-//	FROM users
-//	WHERE username = $1
-func (q *Queries) DeleteUser(ctx context.Context, username string) error {
-	_, err := q.db.Exec(ctx, deleteUser, username)
 	return err
 }
 
@@ -144,89 +82,52 @@ func (q *Queries) GetSchemaVersion(ctx context.Context) (int32, error) {
 	return version, err
 }
 
-const getSettings = `-- name: GetSettings :one
-SELECT id, api_key, notification_urls, autodelete_days
-FROM settings
-WHERE id = 1
+const searchStreamsByNickname = `-- name: SearchStreamsByNickname :many
+SELECT id, updated, url, online, player_names
+FROM streams
+WHERE online = true
+  AND EXISTS (SELECT 1
+              FROM unnest(player_names) AS nickname
+              WHERE levenshtein(lower(nickname), lower($1::VARCHAR(255))) < $2::INTEGER OR
+                                                                                          lower(nickname) LIKE '%' ||
+                                                                                                               lower($1::VARCHAR(255)) ||
+                                                                                                               '%')
+  LIMIT $3::INTEGER
 `
 
-// GetSettings
-//
-//	SELECT id, api_key, notification_urls, autodelete_days
-//	FROM settings
-//	WHERE id = 1
-func (q *Queries) GetSettings(ctx context.Context) (Setting, error) {
-	row := q.db.QueryRow(ctx, getSettings)
-	var i Setting
-	err := row.Scan(
-		&i.ID,
-		&i.ApiKey,
-		&i.NotificationUrls,
-		&i.AutodeleteDays,
-	)
-	return i, err
+type SearchStreamsByNicknameParams struct {
+	Query      string
+	Distance   int32
+	MaxResults int32
 }
 
-const getUser = `-- name: GetUser :one
-SELECT username, created, password_hash, roles, last_session_reset
-FROM users
-WHERE username = $1
-`
-
-// GetUser
+// SearchStreamsByNickname
 //
-//	SELECT username, created, password_hash, roles, last_session_reset
-//	FROM users
-//	WHERE username = $1
-func (q *Queries) GetUser(ctx context.Context, username string) (User, error) {
-	row := q.db.QueryRow(ctx, getUser, username)
-	var i User
-	err := row.Scan(
-		&i.Username,
-		&i.Created,
-		&i.PasswordHash,
-		&i.Roles,
-		&i.LastSessionReset,
-	)
-	return i, err
-}
-
-const searchUsers = `-- name: SearchUsers :many
-SELECT username, created, password_hash, roles, last_session_reset
-FROM users
-WHERE username ILIKE $3
-ORDER BY username
-OFFSET $1 LIMIT $2
-`
-
-type SearchUsersParams struct {
-	Offset int64
-	Limit  int64
-	Query  string
-}
-
-// SearchUsers
-//
-//	SELECT username, created, password_hash, roles, last_session_reset
-//	FROM users
-//	WHERE username ILIKE $3
-//	ORDER BY username
-//	OFFSET $1 LIMIT $2
-func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]User, error) {
-	rows, err := q.db.Query(ctx, searchUsers, arg.Offset, arg.Limit, arg.Query)
+//	SELECT id, updated, url, online, player_names
+//	FROM streams
+//	WHERE online = true
+//	  AND EXISTS (SELECT 1
+//	              FROM unnest(player_names) AS nickname
+//	              WHERE levenshtein(lower(nickname), lower($1::VARCHAR(255))) < $2::INTEGER OR
+//	                                                                                          lower(nickname) LIKE '%' ||
+//	                                                                                                               lower($1::VARCHAR(255)) ||
+//	                                                                                                               '%')
+//	  LIMIT $3::INTEGER
+func (q *Queries) SearchStreamsByNickname(ctx context.Context, arg SearchStreamsByNicknameParams) ([]Stream, error) {
+	rows, err := q.db.Query(ctx, searchStreamsByNickname, arg.Query, arg.Distance, arg.MaxResults)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []User{}
+	items := []Stream{}
 	for rows.Next() {
-		var i User
+		var i Stream
 		if err := rows.Scan(
-			&i.Username,
-			&i.Created,
-			&i.PasswordHash,
-			&i.Roles,
-			&i.LastSessionReset,
+			&i.ID,
+			&i.Updated,
+			&i.Url,
+			&i.Online,
+			&i.PlayerNames,
 		); err != nil {
 			return nil, err
 		}
@@ -254,7 +155,7 @@ func (q *Queries) SetSchemaVersion(ctx context.Context, version int32) error {
 
 const setStreamOnline = `-- name: SetStreamOnline :exec
 UPDATE streams
-SET online = true,
+SET online  = true,
     updated = $2
 WHERE id = $1
 `
@@ -267,79 +168,11 @@ type SetStreamOnlineParams struct {
 // SetStreamOnline
 //
 //	UPDATE streams
-//	SET online = true,
+//	SET online  = true,
 //	    updated = $2
 //	WHERE id = $1
 func (q *Queries) SetStreamOnline(ctx context.Context, arg SetStreamOnlineParams) error {
 	_, err := q.db.Exec(ctx, setStreamOnline, arg.ID, arg.Updated)
-	return err
-}
-
-const setUserPasswordHash = `-- name: SetUserPasswordHash :exec
-UPDATE users
-SET password_hash = $2
-WHERE username = $1
-`
-
-type SetUserPasswordHashParams struct {
-	Username     string
-	PasswordHash string
-}
-
-// SetUserPasswordHash
-//
-//	UPDATE users
-//	SET password_hash = $2
-//	WHERE username = $1
-func (q *Queries) SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHashParams) error {
-	_, err := q.db.Exec(ctx, setUserPasswordHash, arg.Username, arg.PasswordHash)
-	return err
-}
-
-const setUserRoles = `-- name: SetUserRoles :exec
-UPDATE users
-SET roles = $2
-WHERE username = $1
-`
-
-type SetUserRolesParams struct {
-	Username string
-	Roles    []string
-}
-
-// SetUserRoles
-//
-//	UPDATE users
-//	SET roles = $2
-//	WHERE username = $1
-func (q *Queries) SetUserRoles(ctx context.Context, arg SetUserRolesParams) error {
-	_, err := q.db.Exec(ctx, setUserRoles, arg.Username, arg.Roles)
-	return err
-}
-
-const updateSettings = `-- name: UpdateSettings :exec
-UPDATE settings
-SET api_key           = $1,
-    notification_urls = $2,
-    autodelete_days   = $3
-WHERE id = 1
-`
-
-type UpdateSettingsParams struct {
-	ApiKey           *string
-	NotificationUrls []string
-	AutodeleteDays   *int32
-}
-
-// UpdateSettings
-//
-//	UPDATE settings
-//	SET api_key           = $1,
-//	    notification_urls = $2,
-//	    autodelete_days   = $3
-//	WHERE id = 1
-func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) error {
-	_, err := q.db.Exec(ctx, updateSettings, arg.ApiKey, arg.NotificationUrls, arg.AutodeleteDays)
 	return err
 }
 

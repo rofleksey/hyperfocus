@@ -12,25 +12,10 @@ type SchemaVersion struct {
 	Version int32
 }
 
-type Setting struct {
-	ID               int32
-	ApiKey           *string
-	NotificationUrls []string
-	AutodeleteDays   *int32
-}
-
 type Stream struct {
 	ID          string
 	Updated     time.Time
 	Url         *string
 	Online      bool
 	PlayerNames []string
-}
-
-type User struct {
-	Username         string
-	Created          time.Time
-	PasswordHash     string
-	Roles            []string
-	LastSessionReset *time.Time
 }

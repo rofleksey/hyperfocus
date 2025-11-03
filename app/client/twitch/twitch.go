@@ -34,12 +34,12 @@ func NewClient(di *do.Injector) (*Client, error) {
 		HTTPClient:   httpClient,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create helix client: %v", err)
+		return nil, fmt.Errorf("failed to create helix client: %w", err)
 	}
 
 	resp, err := helixClient.RefreshUserAccessToken(cfg.Twitch.RefreshToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get access token: %v", err)
+		return nil, fmt.Errorf("failed to get access token: %w", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("failed to get token: status %d: %s", resp.StatusCode, resp.ErrorMessage)
@@ -67,7 +67,7 @@ func (c *Client) GetLiveDBDStreams(after ...string) (helix.ManyStreams, error) {
 		Type:    "live",
 	})
 	if err != nil {
-		return helix.ManyStreams{}, fmt.Errorf("GetStreams: %v", err)
+		return helix.ManyStreams{}, fmt.Errorf("GetStreams: %w", err)
 	}
 	if resp.StatusCode != 200 {
 		return helix.ManyStreams{}, fmt.Errorf("GetStreams: status %d: %s", resp.StatusCode, resp.ErrorMessage)
@@ -81,7 +81,7 @@ func (c *Client) GetUserIDByUsername(username string) (string, error) {
 		Logins: []string{username},
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get user info: %v", err)
+		return "", fmt.Errorf("failed to get user info: %w", err)
 	}
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("failed to get user info: status %d: %s", resp.StatusCode, resp.ErrorMessage)
@@ -97,12 +97,12 @@ func (c *Client) GetUserIDByUsername(username string) (string, error) {
 func (c *Client) SendMessage(channel, text string) error {
 	broadcasterID, err := c.GetUserIDByUsername(channel)
 	if err != nil {
-		return fmt.Errorf("failed to get broadcaster id: %v", err)
+		return fmt.Errorf("failed to get broadcaster id: %w", err)
 	}
 
 	senderID, err := c.GetUserIDByUsername(c.cfg.Twitch.Username)
 	if err != nil {
-		return fmt.Errorf("failed to get sender id: %v", err)
+		return fmt.Errorf("failed to get sender id: %w", err)
 	}
 
 	resp, err := c.userClient.SendChatMessage(&helix.SendChatMessageParams{
@@ -111,7 +111,7 @@ func (c *Client) SendMessage(channel, text string) error {
 		Message:       text,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to send message: %v", err)
+		return fmt.Errorf("failed to send message: %w", err)
 	}
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("failed to send message: status %d: %s", resp.StatusCode, resp.ErrorMessage)
@@ -123,14 +123,14 @@ func (c *Client) SendMessage(channel, text string) error {
 func (c *Client) GetStreamStartedAt(username string) (time.Time, error) {
 	userID, err := c.GetUserIDByUsername(username)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to get user id: %v", err)
+		return time.Time{}, fmt.Errorf("failed to get user id: %w", err)
 	}
 
 	resp, err := c.userClient.GetStreams(&helix.StreamsParams{
 		UserIDs: []string{userID},
 	})
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to get stream info: %v", err)
+		return time.Time{}, fmt.Errorf("failed to get stream info: %w", err)
 	}
 	if resp.StatusCode != 200 {
 		return time.Time{}, fmt.Errorf("failed to get stream info: status %d: %s", resp.StatusCode, resp.ErrorMessage)

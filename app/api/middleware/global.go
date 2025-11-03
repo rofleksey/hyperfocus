@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"hyperfocus/app/config"
-	"hyperfocus/app/service/auth"
 	"hyperfocus/app/util"
 	"hyperfocus/app/util/telemetry"
 	"log/slog"
@@ -14,12 +13,10 @@ import (
 
 	"github.com/elliotchance/pie/v2"
 	sentryotel "github.com/getsentry/sentry-go/otel"
-	jwtware "github.com/gofiber/contrib/jwt"
 	"github.com/gofiber/contrib/otelfiber/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/rofleksey/meg"
 	"github.com/samber/do"
 	slogfiber "github.com/samber/slog-fiber"
@@ -28,7 +25,6 @@ import (
 func FiberMiddleware(app *fiber.App, di *do.Injector) {
 	cfg := do.MustInvoke[*config.Config](di)
 	tel := do.MustInvoke[*telemetry.Telemetry](di)
-	authService := do.MustInvoke[*auth.Service](di)
 
 	staticOrigins := []string{
 		cfg.BaseURL,
@@ -94,56 +90,4 @@ func FiberMiddleware(app *fiber.App, di *do.Injector) {
 			)
 		},
 	}))
-
-	// extract authorization from JWT
-	app.Use(jwtware.New(jwtware.Config{
-		SigningKey: jwtware.SigningKey{Key: []byte(cfg.Auth.JWT.Secret)},
-		SuccessHandler: func(ctx *fiber.Ctx) error {
-			tokenOpt := ctx.Locals("user")
-			if tokenOpt == nil {
-				return ctx.Next()
-			}
-
-			token := tokenOpt.(*jwt.Token) //nolint:forcetypeassert
-
-			tokenUser, err := authService.ValidateToken(ctx.UserContext(), token)
-			if err != nil {
-				return ctx.Next()
-			}
-
-			ctx.Locals(string(util.UserContextKey), tokenUser)
-
-			newUserCtx := context.WithValue(ctx.UserContext(), util.UserContextKey, tokenUser)
-			newUserCtx = context.WithValue(newUserCtx, util.UsernameContextKey, tokenUser.Username)
-			ctx.SetUserContext(newUserCtx)
-
-			return ctx.Next()
-		},
-		ErrorHandler: func(ctx *fiber.Ctx, _ error) error {
-			return ctx.Next()
-		},
-		TokenLookup: "query:token,cookie:hyperfocus_auth",
-		AuthScheme:  "Bearer",
-	}))
-
-	// verify api key
-	app.Use(func(ctx *fiber.Ctx) error {
-		apiKey := ctx.Get("X-Api-Key")
-		if apiKey == "" {
-			return ctx.Next()
-		}
-
-		apiUser, err := authService.ValidateApiKey(ctx.UserContext(), apiKey)
-		if err != nil {
-			return ctx.Next()
-		}
-
-		ctx.Locals(string(util.UserContextKey), apiUser)
-
-		newUserCtx := context.WithValue(ctx.UserContext(), util.UserContextKey, apiUser)
-		newUserCtx = context.WithValue(newUserCtx, util.UsernameContextKey, apiUser.Username)
-		ctx.SetUserContext(newUserCtx)
-
-		return ctx.Next()
-	})
 }

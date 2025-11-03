@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"context"
+	"errors"
 	"hyperfocus/app/client/frame_grabber"
 	"hyperfocus/app/client/twitch_live"
 	"hyperfocus/app/config"
@@ -49,7 +50,7 @@ func (s *Service) doProcessing(ctx context.Context) error {
 
 	streams, err := s.queries.GetOnlineStreams(ctx)
 	if err != nil {
-		return oops.Errorf("GetOnlineStreams: %v", err)
+		return oops.Errorf("GetOnlineStreams: %w", err)
 	}
 	if len(streams) == 0 {
 		return nil
@@ -120,7 +121,7 @@ func (s *Service) doProcessing(ctx context.Context) error {
 func (s *Service) runFetchWorker(ctx context.Context, taskChan chan *StreamTask, resultChan chan *StreamTask) {
 	for task := range taskChan {
 		frameImg, err := s.fetchChannelFrame(ctx, task)
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrNoOptimalStreamQuality) {
 			slog.ErrorContext(ctx, "Error fetching channel frame",
 				slog.String("channel_name", task.Stream.ID),
 				slog.Any("error", err),
@@ -161,7 +162,7 @@ func (s *Service) fetchChannelFrame(ctx context.Context, task *StreamTask) (imag
 
 	frameImg, err := s.obtainStreamFrame(ctx, task.Stream, proxy)
 	if err != nil {
-		return nil, oops.Errorf("obtainStreamFrame: %v", err)
+		return nil, oops.Errorf("obtainStreamFrame: %w", err)
 	}
 
 	// skipping offline channel
@@ -196,14 +197,14 @@ func (s *Service) processChannel(ctx context.Context, task *StreamTask) error {
 
 	data, err := s.imageAnalyzer.AnalyzeImage(ctx, frameImg)
 	if err != nil {
-		return oops.Errorf("AnalyzeBytes: %v", err)
+		return oops.Errorf("AnalyzeBytes: %w", err)
 	}
 
 	if err = s.queries.UpdateStreamData(ctx, database.UpdateStreamDataParams{
 		ID:          task.Stream.ID,
 		PlayerNames: meg.NonNilSlice(data.Usernames),
 	}); err != nil {
-		return oops.Errorf("UpdateStreamData: %v", err)
+		return oops.Errorf("UpdateStreamData: %w", err)
 	}
 
 	//slog.Debug("Finished processing channel",

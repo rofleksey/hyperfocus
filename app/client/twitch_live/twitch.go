@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/samber/do"
 )
@@ -19,12 +20,24 @@ const clientId = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 var ErrNotFound = errors.New("transcode does not exist - the stream is probably offline")
 
 type Client struct {
-	cfg *config.Config
+	cfg    *config.Config
+	client *http.Client
 }
 
 func NewClient(di *do.Injector) (*Client, error) {
+	cfg := do.MustInvoke[*config.Config](di)
+
+	transport, err := util.NewRotatingProxyTransport(cfg.Proxy.List)
+	if err != nil {
+		return nil, fmt.Errorf("NewRotatingProxyTransport: %w", err)
+	}
+
 	return &Client{
-		cfg: do.MustInvoke[*config.Config](di),
+		cfg: cfg,
+		client: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+		},
 	}, nil
 }
 
@@ -39,7 +52,7 @@ type StreamQuality struct {
 	URL        string `json:"url"`
 }
 
-func (c *Client) getAccessToken(ctx context.Context, client *http.Client, id string) (*AccessToken, error) {
+func (c *Client) getAccessToken(ctx context.Context, id string) (*AccessToken, error) {
 	type persistedQuery struct {
 		Version    int    `json:"version"`
 		Sha256Hash string `json:"sha256Hash"`
@@ -97,7 +110,7 @@ func (c *Client) getAccessToken(ctx context.Context, client *http.Client, id str
 	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
 	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
-	resp, err := client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Do: %w", err)
 	}
@@ -132,7 +145,7 @@ func (c *Client) getAccessToken(ctx context.Context, client *http.Client, id str
 	return response.Data.StreamPlaybackAccessToken, nil
 }
 
-func (c *Client) getPlaylist(id string, client *http.Client, accessToken *AccessToken) (string, error) {
+func (c *Client) getPlaylist(id string, accessToken *AccessToken) (string, error) {
 	if accessToken == nil {
 		return "", fmt.Errorf("got nil access token")
 	}
@@ -154,7 +167,7 @@ func (c *Client) getPlaylist(id string, client *http.Client, accessToken *Access
 	//req.Header.Set("Device-Id", c.cfg.Twitch.BrowserDeviceID)
 	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
-	resp, err := client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("Do: %w", err)
 	}
@@ -216,18 +229,12 @@ func parsePlaylist(playlist string) []StreamQuality {
 }
 
 func (c *Client) GetM3U8(ctx context.Context, channel, proxy string) ([]StreamQuality, error) {
-	client, err := util.CreateProxyHttpClient(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("CreateProxyHttpClient: %w", err)
-	}
-	defer client.CloseIdleConnections()
-
-	accessToken, err := c.getAccessToken(ctx, client, channel)
+	accessToken, err := c.getAccessToken(ctx, channel)
 	if err != nil {
 		return nil, fmt.Errorf("getAccessToken: %w", err)
 	}
 
-	playlist, err := c.getPlaylist(channel, client, accessToken)
+	playlist, err := c.getPlaylist(channel, accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("getPlaylist: %w", err)
 	}

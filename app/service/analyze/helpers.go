@@ -13,6 +13,8 @@ import (
 	"github.com/samber/oops"
 )
 
+var ErrNoOptimalStreamQuality = errors.New("no optimal stream quality")
+
 type StreamTask struct {
 	Index  int
 	Stream database.Stream
@@ -41,7 +43,7 @@ func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream,
 			return nil, nil
 		}
 
-		return nil, oops.Errorf("GetM3U8: %v", err)
+		return nil, oops.Errorf("GetM3U8: %w", err)
 	}
 	if len(streamQualities) == 0 {
 		return nil, oops.Errorf("No stream qualities found")
@@ -49,14 +51,14 @@ func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream,
 
 	quality, err := selectOptimalStreamQuality(streamQualities)
 	if err != nil {
-		return nil, oops.Errorf("selectOptimalStreamQuality: %v", err)
+		return nil, oops.Errorf("selectOptimalStreamQuality: %w", err)
 	}
 
 	url := quality.URL
 
 	frameImg, err := s.frameGrabber.GrabFrameFromM3U8(ctx, url, proxy)
 	if err != nil {
-		return nil, oops.Errorf("GrabFrameFromM3U8: %v", err)
+		return nil, oops.Errorf("GrabFrameFromM3U8: %w", err)
 	}
 
 	// cache stream url
@@ -64,7 +66,7 @@ func (s *Service) obtainStreamFrame(ctx context.Context, stream database.Stream,
 		ID:  stream.ID,
 		Url: &url,
 	}); err != nil {
-		return nil, oops.Errorf("UpdateStreamUrl: %v", err)
+		return nil, oops.Errorf("UpdateStreamUrl: %w", err)
 	}
 
 	return frameImg, err
@@ -102,7 +104,7 @@ func selectOptimalStreamQuality(arr []twitch_live.StreamQuality) (twitch_live.St
 	}
 
 	if maxResolution == 0 {
-		return twitch_live.StreamQuality{}, errors.New("could not find stream quality")
+		return twitch_live.StreamQuality{}, ErrNoOptimalStreamQuality
 	}
 
 	return result, nil

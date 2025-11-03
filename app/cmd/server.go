@@ -15,14 +15,11 @@ import (
 	"hyperfocus/app/config"
 	"hyperfocus/app/database"
 	"hyperfocus/app/database/migration"
+	"hyperfocus/app/service/alert"
 	"hyperfocus/app/service/analyze"
-	"hyperfocus/app/service/auth"
 	"hyperfocus/app/service/limits"
-	"hyperfocus/app/service/pubsub"
-	"hyperfocus/app/service/settings"
+	"hyperfocus/app/service/search"
 	"hyperfocus/app/service/twitch"
-	"hyperfocus/app/service/user"
-	"hyperfocus/app/service/websocket"
 	"hyperfocus/app/util/dbd"
 	"hyperfocus/app/util/mylog"
 	"hyperfocus/app/util/telemetry"
@@ -173,22 +170,11 @@ func runServer(_ *cobra.Command, _ []string) {
 	do.Provide(di, magick.NewClient)
 	do.Provide(di, dbd.NewImageAnalyzer)
 
-	do.Provide(di, pubsub.New)
-	do.Provide(di, auth.New)
 	do.Provide(di, limits.New)
-	do.Provide(di, user.New)
-	do.Provide(di, settings.New)
-	do.Provide(di, websocket.New)
 	do.Provide(di, twitch.New)
 	do.Provide(di, analyze.New)
-
-	if err = do.MustInvoke[*user.Service](di).Init(appCtx); err != nil {
-		slog.Error("User service init failed",
-			slog.Any("error", err),
-		)
-		os.Exit(1)
-		return
-	}
+	do.Provide(di, search.New)
+	do.Provide(di, alert.New)
 
 	if err = do.MustInvoke[*paddle.Client](di).HealthCheck(appCtx); err != nil {
 		slog.Error("PaddleOCR client init failed",
@@ -201,8 +187,7 @@ func runServer(_ *cobra.Command, _ []string) {
 	go do.MustInvoke[*twitchC.Client](di).RunRefreshLoop(appCtx)
 	go do.MustInvoke[*twitch.Service](di).RunFetchLoop(appCtx)
 	go do.MustInvoke[*analyze.Service](di).RunProcessLoop(appCtx)
-
-	wsController := controller.NewWS(di)
+	go do.MustInvoke[*alert.Service](di).RunFetchLoop(appCtx)
 
 	server := controller.NewStrictServer(di)
 	handler := api.NewStrictHandler(server, nil)
@@ -219,7 +204,6 @@ func runServer(_ *cobra.Command, _ []string) {
 
 	middleware.FiberMiddleware(app, di)
 	routes.StaticRoutes(app)
-	routes.WSRoutes(app, wsController)
 
 	apiGroup := app.Group("/v1")
 	api.RegisterHandlersWithOptions(apiGroup, handler, api.FiberServerOptions{

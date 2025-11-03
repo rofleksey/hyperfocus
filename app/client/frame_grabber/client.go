@@ -22,19 +22,31 @@ import (
 const clientId = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 
 type Client struct {
-	cfg *config.Config
+	cfg    *config.Config
+	client *http.Client
 }
 
 func NewClient(di *do.Injector) (*Client, error) {
+	cfg := do.MustInvoke[*config.Config](di)
+
+	transport, err := util.NewRotatingProxyTransport(cfg.Proxy.List)
+	if err != nil {
+		return nil, fmt.Errorf("NewRotatingProxyTransport: %w", err)
+	}
+
 	return &Client{
-		cfg: do.MustInvoke[*config.Config](di),
+		cfg: cfg,
+		client: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+		},
 	}, nil
 }
 
 func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (image.Image, error) {
 	adDuration, err := c.getAdDuration(ctx, url, proxy)
 	if err != nil {
-		return nil, fmt.Errorf("getAdDuration: %v", err)
+		return nil, fmt.Errorf("getAdDuration: %w", err)
 	}
 
 	skipTime := ""
@@ -93,7 +105,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (imag
 	cmd.Stderr = &stderr
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start ffmpeg: %v", err)
+		return nil, fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
 	done := make(chan error, 1)
@@ -107,7 +119,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (imag
 		return nil, fmt.Errorf("ffmpeg timeout after 30 seconds")
 	case err := <-done:
 		if err != nil {
-			return nil, fmt.Errorf("ffmpeg execution failed: %v, output: %s", err, stderr.String())
+			return nil, fmt.Errorf("ffmpeg execution failed: %w, output: %s", err, stderr.String())
 		}
 	}
 
@@ -118,7 +130,7 @@ func (c *Client) GrabFrameFromM3U8(ctx context.Context, url, proxy string) (imag
 
 	result, err := bmp.Decode(bytes.NewReader(output))
 	if err != nil {
-		return nil, fmt.Errorf("invalid PNG data from ffmpeg: %v", err)
+		return nil, fmt.Errorf("invalid PNG data from ffmpeg: %w", err)
 	}
 
 	size := result.Bounds().Size()
@@ -134,15 +146,9 @@ func (c *Client) getAdDuration(ctx context.Context, m3u8URL, proxy string) (floa
 		return 0.0, nil
 	}
 
-	client, err := util.CreateProxyHttpClient(proxy)
-	if err != nil {
-		return 0.0, fmt.Errorf("CreateProxyHttpClient: %v", err)
-	}
-	defer client.CloseIdleConnections()
-
 	req, err := http.NewRequestWithContext(ctx, "GET", m3u8URL, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %v", err)
+		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set appropriate headers for m3u8 request
@@ -154,9 +160,9 @@ func (c *Client) getAdDuration(ctx context.Context, m3u8URL, proxy string) (floa
 	req.Header.Set("Client-Id", clientId)
 	req.Header.Set("Authorization", "OAuth "+c.cfg.Twitch.BrowserOauthToken)
 
-	resp, err := client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("failed to fetch m3u8: %v", err)
+		return 0, fmt.Errorf("failed to fetch m3u8: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -167,7 +173,7 @@ func (c *Client) getAdDuration(ctx context.Context, m3u8URL, proxy string) (floa
 	// Read with limit to prevent excessive memory usage
 	content, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024)) // 5MB limit
 	if err != nil {
-		return 0, fmt.Errorf("failed to read m3u8 content: %v", err)
+		return 0, fmt.Errorf("failed to read m3u8 content: %w", err)
 	}
 
 	return c.analyzeAds(string(content))

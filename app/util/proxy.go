@@ -4,25 +4,55 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
+	"sync"
 )
 
-func CreateProxyHttpClient(proxy string) (*http.Client, error) {
-	if proxy == "" {
-		return &http.Client{
-			Timeout: 30 * time.Second,
+type RotatingProxyTransport struct {
+	proxies []*url.URL
+	current int
+	mu      sync.Mutex
+	base    http.RoundTripper
+}
+
+func NewRotatingProxyTransport(urls []string) (http.RoundTripper, error) {
+	if len(urls) == 0 {
+		return &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
 		}, nil
 	}
 
-	proxyUrl, err := url.Parse(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("proxyurl.Parse: %w", err)
+	proxies := make([]*url.URL, 0, len(urls))
+	for _, u := range urls {
+		proxy, err := url.Parse(u)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing proxy URL %s: %w", u, err)
+		}
+
+		proxies = append(proxies, proxy)
 	}
 
-	return &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyUrl),
+	return &RotatingProxyTransport{
+		proxies: proxies,
+		base: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
 		},
 	}, nil
+}
+
+func (r *RotatingProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	proxy := r.proxies[r.current]
+	r.current = (r.current + 1) % len(r.proxies)
+	r.mu.Unlock()
+
+	// Clone the base transport and set proxy
+	transport := r.base
+	if transport == nil {
+		transport = http.DefaultTransport.(*http.Transport).Clone()
+	}
+
+	transport.(*http.Transport).Proxy = http.ProxyURL(proxy)
+	return transport.RoundTrip(req)
 }

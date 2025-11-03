@@ -8,50 +8,14 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gofiber/fiber/v2"
-	"github.com/oapi-codegen/runtime"
 )
-
-const (
-	PermissionsScopes = "Permissions.Scopes"
-)
-
-// Defines values for Permission.
-const (
-	PermissionAuthenticated Permission = "authenticated"
-	PermissionSettingsEdit  Permission = "settings:edit"
-	PermissionUserCreate    Permission = "user:create"
-	PermissionUserDelete    Permission = "user:delete"
-	PermissionUserList      Permission = "user:list"
-	PermissionUserRoles     Permission = "user:roles"
-)
-
-// Defines values for WsMessagesChangedMessageEvent.
-const (
-	WsMessagesChangedMessageEventMessagesChanged WsMessagesChangedMessageEvent = "messages_changed"
-)
-
-// CreateUserRequest defines model for CreateUserRequest.
-type CreateUserRequest struct {
-	Password string   `json:"password"`
-	Roles    []string `json:"roles"`
-	Username string   `json:"username"`
-}
-
-// EditUserRequest defines model for EditUserRequest.
-type EditUserRequest struct {
-	Password *string  `json:"password,omitempty"`
-	Roles    []string `json:"roles"`
-}
 
 // General defines model for General.
 type General struct {
@@ -60,229 +24,39 @@ type General struct {
 	StatusCode int    `json:"statusCode,omitempty"`
 }
 
-// GetMyselfResponse defines model for GetMyselfResponse.
-type GetMyselfResponse struct {
-	Permissions []Permission `json:"permissions"`
-	Username    string       `json:"username"`
-}
-
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
 	BuildDate string `json:"buildDate"`
 	Version   string `json:"version"`
 }
 
-// LoginRequest defines model for LoginRequest.
-type LoginRequest struct {
-	Password string `json:"password"`
-	Username string `json:"username"`
-}
-
-// LoginResponse defines model for LoginResponse.
-type LoginResponse struct {
-	Token string `json:"token"`
-}
-
-// Permission defines model for Permission.
-type Permission string
-
 // SearchRequest defines model for SearchRequest.
 type SearchRequest struct {
-	Limit  int    `json:"limit"`
-	Offset int    `json:"offset"`
-	Query  string `json:"query"`
+	Query string `json:"query"`
 }
 
-// Settings defines model for Settings.
-type Settings struct {
-	ApiKey string `json:"apiKey"`
+// SearchResponse defines model for SearchResponse.
+type SearchResponse struct {
+	Data []Stream `json:"data"`
 }
 
-// User defines model for User.
-type User struct {
-	Created  time.Time `json:"created"`
-	Roles    []string  `json:"roles"`
-	Username string    `json:"username"`
+// Stream defines model for Stream.
+type Stream struct {
+	Name      string   `json:"name"`
+	Nicknames []string `json:"nicknames"`
 }
 
-// UserListResponse defines model for UserListResponse.
-type UserListResponse struct {
-	TotalCount int    `json:"totalCount"`
-	Users      []User `json:"users"`
-}
-
-// WsMessage defines model for WsMessage.
-type WsMessage struct {
-	Event string `json:"event"`
-	Id    string `exhaustruct:"optional" json:"id"`
-	union json.RawMessage
-}
-
-// WsMessagesChangedMessage defines model for WsMessagesChangedMessage.
-type WsMessagesChangedMessage struct {
-	Event WsMessagesChangedMessageEvent `json:"event"`
-	Id    string                        `exhaustruct:"optional" json:"id"`
-}
-
-// WsMessagesChangedMessageEvent defines model for WsMessagesChangedMessage.Event.
-type WsMessagesChangedMessageEvent string
-
-// LoginJSONRequestBody defines body for Login for application/json ContentType.
-type LoginJSONRequestBody = LoginRequest
-
-// SetSettingsJSONRequestBody defines body for SetSettings for application/json ContentType.
-type SetSettingsJSONRequestBody = Settings
-
-// CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
-type CreateUserJSONRequestBody = CreateUserRequest
-
-// EditUserJSONRequestBody defines body for EditUser for application/json ContentType.
-type EditUserJSONRequestBody = EditUserRequest
-
-// SearchUsersJSONRequestBody defines body for SearchUsers for application/json ContentType.
-type SearchUsersJSONRequestBody = SearchRequest
-
-// AsWsMessagesChangedMessage returns the union data inside the WsMessage as a WsMessagesChangedMessage
-func (t WsMessage) AsWsMessagesChangedMessage() (WsMessagesChangedMessage, error) {
-	var body WsMessagesChangedMessage
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromWsMessagesChangedMessage overwrites any union data inside the WsMessage as the provided WsMessagesChangedMessage
-func (t *WsMessage) FromWsMessagesChangedMessage(v WsMessagesChangedMessage) error {
-	t.Event = "messages_changed"
-
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeWsMessagesChangedMessage performs a merge with any union data inside the WsMessage, using the provided WsMessagesChangedMessage
-func (t *WsMessage) MergeWsMessagesChangedMessage(v WsMessagesChangedMessage) error {
-	t.Event = "messages_changed"
-
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t WsMessage) Discriminator() (string, error) {
-	var discriminator struct {
-		Discriminator string `json:"event"`
-	}
-	err := json.Unmarshal(t.union, &discriminator)
-	return discriminator.Discriminator, err
-}
-
-func (t WsMessage) ValueByDiscriminator() (interface{}, error) {
-	discriminator, err := t.Discriminator()
-	if err != nil {
-		return nil, err
-	}
-	switch discriminator {
-	case "messages_changed":
-		return t.AsWsMessagesChangedMessage()
-	default:
-		return nil, errors.New("unknown discriminator value: " + discriminator)
-	}
-}
-
-func (t WsMessage) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	object := make(map[string]json.RawMessage)
-	if t.union != nil {
-		err = json.Unmarshal(b, &object)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	object["event"], err = json.Marshal(t.Event)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling 'event': %w", err)
-	}
-
-	object["id"], err = json.Marshal(t.Id)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling 'id': %w", err)
-	}
-
-	b, err = json.Marshal(object)
-	return b, err
-}
-
-func (t *WsMessage) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	if err != nil {
-		return err
-	}
-	object := make(map[string]json.RawMessage)
-	err = json.Unmarshal(b, &object)
-	if err != nil {
-		return err
-	}
-
-	if raw, found := object["event"]; found {
-		err = json.Unmarshal(raw, &t.Event)
-		if err != nil {
-			return fmt.Errorf("error reading 'event': %w", err)
-		}
-	}
-
-	if raw, found := object["id"]; found {
-		err = json.Unmarshal(raw, &t.Id)
-		if err != nil {
-			return fmt.Errorf("error reading 'id': %w", err)
-		}
-	}
-
-	return err
-}
+// SearchPlayersJSONRequestBody defines body for SearchPlayers for application/json ContentType.
+type SearchPlayersJSONRequestBody = SearchRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Login
-	// (POST /auth/login)
-	Login(c *fiber.Ctx) error
-	// Logout
-	// (POST /auth/logout)
-	Logout(c *fiber.Ctx) error
-	// Get my user
-	// (GET /auth/me)
-	GetMyself(c *fiber.Ctx) error
 	// Health check
 	// (GET /healthz)
 	HealthCheck(c *fiber.Ctx) error
-	// Get settings
-	// (GET /settings)
-	GetSettings(c *fiber.Ctx) error
-	// Set settings
-	// (POST /settings)
-	SetSettings(c *fiber.Ctx) error
-	// Create a user
-	// (POST /user)
-	CreateUser(c *fiber.Ctx) error
-	// Delete a user
-	// (DELETE /user/{username})
-	DeleteUser(c *fiber.Ctx, username string) error
-	// Get user
-	// (GET /user/{username})
-	GetUser(c *fiber.Ctx, username string) error
-	// Edit user
-	// (PUT /user/{username})
-	EditUser(c *fiber.Ctx, username string) error
-	// Search users
-	// (POST /users)
-	SearchUsers(c *fiber.Ctx) error
+	// Search players
+	// (POST /search)
+	SearchPlayers(c *fiber.Ctx) error
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -292,122 +66,16 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc fiber.Handler
 
-// Login operation middleware
-func (siw *ServerInterfaceWrapper) Login(c *fiber.Ctx) error {
-
-	c.Context().SetUserValue(PermissionsScopes, []string{})
-
-	return siw.Handler.Login(c)
-}
-
-// Logout operation middleware
-func (siw *ServerInterfaceWrapper) Logout(c *fiber.Ctx) error {
-
-	c.Context().SetUserValue(PermissionsScopes, []string{})
-
-	return siw.Handler.Logout(c)
-}
-
-// GetMyself operation middleware
-func (siw *ServerInterfaceWrapper) GetMyself(c *fiber.Ctx) error {
-
-	c.Context().SetUserValue(PermissionsScopes, []string{})
-
-	return siw.Handler.GetMyself(c)
-}
-
 // HealthCheck operation middleware
 func (siw *ServerInterfaceWrapper) HealthCheck(c *fiber.Ctx) error {
-
-	c.Context().SetUserValue(PermissionsScopes, []string{})
 
 	return siw.Handler.HealthCheck(c)
 }
 
-// GetSettings operation middleware
-func (siw *ServerInterfaceWrapper) GetSettings(c *fiber.Ctx) error {
+// SearchPlayers operation middleware
+func (siw *ServerInterfaceWrapper) SearchPlayers(c *fiber.Ctx) error {
 
-	c.Context().SetUserValue(PermissionsScopes, []string{"settings:edit"})
-
-	return siw.Handler.GetSettings(c)
-}
-
-// SetSettings operation middleware
-func (siw *ServerInterfaceWrapper) SetSettings(c *fiber.Ctx) error {
-
-	c.Context().SetUserValue(PermissionsScopes, []string{"settings:edit"})
-
-	return siw.Handler.SetSettings(c)
-}
-
-// CreateUser operation middleware
-func (siw *ServerInterfaceWrapper) CreateUser(c *fiber.Ctx) error {
-
-	c.Context().SetUserValue(PermissionsScopes, []string{"user:create"})
-
-	return siw.Handler.CreateUser(c)
-}
-
-// DeleteUser operation middleware
-func (siw *ServerInterfaceWrapper) DeleteUser(c *fiber.Ctx) error {
-
-	var err error
-
-	// ------------- Path parameter "username" -------------
-	var username string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "username", c.Params("username"), &username, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter username: %w", err).Error())
-	}
-
-	c.Context().SetUserValue(PermissionsScopes, []string{"user:delete"})
-
-	return siw.Handler.DeleteUser(c, username)
-}
-
-// GetUser operation middleware
-func (siw *ServerInterfaceWrapper) GetUser(c *fiber.Ctx) error {
-
-	var err error
-
-	// ------------- Path parameter "username" -------------
-	var username string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "username", c.Params("username"), &username, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter username: %w", err).Error())
-	}
-
-	c.Context().SetUserValue(PermissionsScopes, []string{"user:list"})
-
-	return siw.Handler.GetUser(c, username)
-}
-
-// EditUser operation middleware
-func (siw *ServerInterfaceWrapper) EditUser(c *fiber.Ctx) error {
-
-	var err error
-
-	// ------------- Path parameter "username" -------------
-	var username string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "username", c.Params("username"), &username, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter username: %w", err).Error())
-	}
-
-	c.Context().SetUserValue(PermissionsScopes, []string{"user:create"})
-
-	return siw.Handler.EditUser(c, username)
-}
-
-// SearchUsers operation middleware
-func (siw *ServerInterfaceWrapper) SearchUsers(c *fiber.Ctx) error {
-
-	c.Context().SetUserValue(PermissionsScopes, []string{"user:list"})
-
-	return siw.Handler.SearchUsers(c)
+	return siw.Handler.SearchPlayers(c)
 }
 
 // FiberServerOptions provides options for the Fiber server.
@@ -431,210 +99,10 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 		router.Use(fiber.Handler(m))
 	}
 
-	router.Post(options.BaseURL+"/auth/login", wrapper.Login)
-
-	router.Post(options.BaseURL+"/auth/logout", wrapper.Logout)
-
-	router.Get(options.BaseURL+"/auth/me", wrapper.GetMyself)
-
 	router.Get(options.BaseURL+"/healthz", wrapper.HealthCheck)
 
-	router.Get(options.BaseURL+"/settings", wrapper.GetSettings)
+	router.Post(options.BaseURL+"/search", wrapper.SearchPlayers)
 
-	router.Post(options.BaseURL+"/settings", wrapper.SetSettings)
-
-	router.Post(options.BaseURL+"/user", wrapper.CreateUser)
-
-	router.Delete(options.BaseURL+"/user/:username", wrapper.DeleteUser)
-
-	router.Get(options.BaseURL+"/user/:username", wrapper.GetUser)
-
-	router.Put(options.BaseURL+"/user/:username", wrapper.EditUser)
-
-	router.Post(options.BaseURL+"/users", wrapper.SearchUsers)
-
-}
-
-type LoginRequestObject struct {
-	Body *LoginJSONRequestBody
-}
-
-type LoginResponseObject interface {
-	VisitLoginResponse(ctx *fiber.Ctx) error
-}
-
-type Login200Response struct {
-}
-
-func (response Login200Response) VisitLoginResponse(ctx *fiber.Ctx) error {
-	ctx.Status(200)
-	return nil
-}
-
-type Login400JSONResponse General
-
-func (response Login400JSONResponse) VisitLoginResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type Login401JSONResponse General
-
-func (response Login401JSONResponse) VisitLoginResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type Login403JSONResponse General
-
-func (response Login403JSONResponse) VisitLoginResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type Login404JSONResponse General
-
-func (response Login404JSONResponse) VisitLoginResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type Login500JSONResponse General
-
-func (response Login500JSONResponse) VisitLoginResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type LogoutRequestObject struct {
-}
-
-type LogoutResponseObject interface {
-	VisitLogoutResponse(ctx *fiber.Ctx) error
-}
-
-type Logout200Response struct {
-}
-
-func (response Logout200Response) VisitLogoutResponse(ctx *fiber.Ctx) error {
-	ctx.Status(200)
-	return nil
-}
-
-type Logout400JSONResponse General
-
-func (response Logout400JSONResponse) VisitLogoutResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type Logout401JSONResponse General
-
-func (response Logout401JSONResponse) VisitLogoutResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type Logout403JSONResponse General
-
-func (response Logout403JSONResponse) VisitLogoutResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type Logout404JSONResponse General
-
-func (response Logout404JSONResponse) VisitLogoutResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type Logout500JSONResponse General
-
-func (response Logout500JSONResponse) VisitLogoutResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type GetMyselfRequestObject struct {
-}
-
-type GetMyselfResponseObject interface {
-	VisitGetMyselfResponse(ctx *fiber.Ctx) error
-}
-
-type GetMyself200JSONResponse GetMyselfResponse
-
-func (response GetMyself200JSONResponse) VisitGetMyselfResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(200)
-
-	return ctx.JSON(&response)
-}
-
-type GetMyself400JSONResponse General
-
-func (response GetMyself400JSONResponse) VisitGetMyselfResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type GetMyself401JSONResponse General
-
-func (response GetMyself401JSONResponse) VisitGetMyselfResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type GetMyself403JSONResponse General
-
-func (response GetMyself403JSONResponse) VisitGetMyselfResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type GetMyself404JSONResponse General
-
-func (response GetMyself404JSONResponse) VisitGetMyselfResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type GetMyself500JSONResponse General
-
-func (response GetMyself500JSONResponse) VisitGetMyselfResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
 }
 
 type HealthCheckRequestObject struct {
@@ -665,430 +133,62 @@ func (response HealthCheckdefaultJSONResponse) VisitHealthCheckResponse(ctx *fib
 	return ctx.JSON(&response.Body)
 }
 
-type GetSettingsRequestObject struct {
+type SearchPlayersRequestObject struct {
+	Body *SearchPlayersJSONRequestBody
 }
 
-type GetSettingsResponseObject interface {
-	VisitGetSettingsResponse(ctx *fiber.Ctx) error
+type SearchPlayersResponseObject interface {
+	VisitSearchPlayersResponse(ctx *fiber.Ctx) error
 }
 
-type GetSettings200JSONResponse Settings
+type SearchPlayers200JSONResponse SearchResponse
 
-func (response GetSettings200JSONResponse) VisitGetSettingsResponse(ctx *fiber.Ctx) error {
+func (response SearchPlayers200JSONResponse) VisitSearchPlayersResponse(ctx *fiber.Ctx) error {
 	ctx.Response().Header.Set("Content-Type", "application/json")
 	ctx.Status(200)
 
 	return ctx.JSON(&response)
 }
 
-type GetSettings400JSONResponse General
+type SearchPlayers400JSONResponse General
 
-func (response GetSettings400JSONResponse) VisitGetSettingsResponse(ctx *fiber.Ctx) error {
+func (response SearchPlayers400JSONResponse) VisitSearchPlayersResponse(ctx *fiber.Ctx) error {
 	ctx.Response().Header.Set("Content-Type", "application/json")
 	ctx.Status(400)
 
 	return ctx.JSON(&response)
 }
 
-type GetSettings401JSONResponse General
+type SearchPlayers401JSONResponse General
 
-func (response GetSettings401JSONResponse) VisitGetSettingsResponse(ctx *fiber.Ctx) error {
+func (response SearchPlayers401JSONResponse) VisitSearchPlayersResponse(ctx *fiber.Ctx) error {
 	ctx.Response().Header.Set("Content-Type", "application/json")
 	ctx.Status(401)
 
 	return ctx.JSON(&response)
 }
 
-type GetSettings403JSONResponse General
+type SearchPlayers403JSONResponse General
 
-func (response GetSettings403JSONResponse) VisitGetSettingsResponse(ctx *fiber.Ctx) error {
+func (response SearchPlayers403JSONResponse) VisitSearchPlayersResponse(ctx *fiber.Ctx) error {
 	ctx.Response().Header.Set("Content-Type", "application/json")
 	ctx.Status(403)
 
 	return ctx.JSON(&response)
 }
 
-type GetSettings404JSONResponse General
+type SearchPlayers404JSONResponse General
 
-func (response GetSettings404JSONResponse) VisitGetSettingsResponse(ctx *fiber.Ctx) error {
+func (response SearchPlayers404JSONResponse) VisitSearchPlayersResponse(ctx *fiber.Ctx) error {
 	ctx.Response().Header.Set("Content-Type", "application/json")
 	ctx.Status(404)
 
 	return ctx.JSON(&response)
 }
 
-type GetSettings500JSONResponse General
+type SearchPlayers500JSONResponse General
 
-func (response GetSettings500JSONResponse) VisitGetSettingsResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type SetSettingsRequestObject struct {
-	Body *SetSettingsJSONRequestBody
-}
-
-type SetSettingsResponseObject interface {
-	VisitSetSettingsResponse(ctx *fiber.Ctx) error
-}
-
-type SetSettings200Response struct {
-}
-
-func (response SetSettings200Response) VisitSetSettingsResponse(ctx *fiber.Ctx) error {
-	ctx.Status(200)
-	return nil
-}
-
-type SetSettings400JSONResponse General
-
-func (response SetSettings400JSONResponse) VisitSetSettingsResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type SetSettings401JSONResponse General
-
-func (response SetSettings401JSONResponse) VisitSetSettingsResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type SetSettings403JSONResponse General
-
-func (response SetSettings403JSONResponse) VisitSetSettingsResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type SetSettings404JSONResponse General
-
-func (response SetSettings404JSONResponse) VisitSetSettingsResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type SetSettings500JSONResponse General
-
-func (response SetSettings500JSONResponse) VisitSetSettingsResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type CreateUserRequestObject struct {
-	Body *CreateUserJSONRequestBody
-}
-
-type CreateUserResponseObject interface {
-	VisitCreateUserResponse(ctx *fiber.Ctx) error
-}
-
-type CreateUser200Response struct {
-}
-
-func (response CreateUser200Response) VisitCreateUserResponse(ctx *fiber.Ctx) error {
-	ctx.Status(200)
-	return nil
-}
-
-type CreateUser400JSONResponse General
-
-func (response CreateUser400JSONResponse) VisitCreateUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type CreateUser401JSONResponse General
-
-func (response CreateUser401JSONResponse) VisitCreateUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type CreateUser403JSONResponse General
-
-func (response CreateUser403JSONResponse) VisitCreateUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type CreateUser404JSONResponse General
-
-func (response CreateUser404JSONResponse) VisitCreateUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type CreateUser500JSONResponse General
-
-func (response CreateUser500JSONResponse) VisitCreateUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type DeleteUserRequestObject struct {
-	Username string `json:"username"`
-}
-
-type DeleteUserResponseObject interface {
-	VisitDeleteUserResponse(ctx *fiber.Ctx) error
-}
-
-type DeleteUser200Response struct {
-}
-
-func (response DeleteUser200Response) VisitDeleteUserResponse(ctx *fiber.Ctx) error {
-	ctx.Status(200)
-	return nil
-}
-
-type DeleteUser400JSONResponse General
-
-func (response DeleteUser400JSONResponse) VisitDeleteUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type DeleteUser401JSONResponse General
-
-func (response DeleteUser401JSONResponse) VisitDeleteUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type DeleteUser403JSONResponse General
-
-func (response DeleteUser403JSONResponse) VisitDeleteUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type DeleteUser404JSONResponse General
-
-func (response DeleteUser404JSONResponse) VisitDeleteUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type DeleteUser500JSONResponse General
-
-func (response DeleteUser500JSONResponse) VisitDeleteUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type GetUserRequestObject struct {
-	Username string `json:"username"`
-}
-
-type GetUserResponseObject interface {
-	VisitGetUserResponse(ctx *fiber.Ctx) error
-}
-
-type GetUser200JSONResponse User
-
-func (response GetUser200JSONResponse) VisitGetUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(200)
-
-	return ctx.JSON(&response)
-}
-
-type GetUser400JSONResponse General
-
-func (response GetUser400JSONResponse) VisitGetUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type GetUser401JSONResponse General
-
-func (response GetUser401JSONResponse) VisitGetUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type GetUser403JSONResponse General
-
-func (response GetUser403JSONResponse) VisitGetUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type GetUser404JSONResponse General
-
-func (response GetUser404JSONResponse) VisitGetUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type GetUser500JSONResponse General
-
-func (response GetUser500JSONResponse) VisitGetUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type EditUserRequestObject struct {
-	Username string `json:"username"`
-	Body     *EditUserJSONRequestBody
-}
-
-type EditUserResponseObject interface {
-	VisitEditUserResponse(ctx *fiber.Ctx) error
-}
-
-type EditUser200Response struct {
-}
-
-func (response EditUser200Response) VisitEditUserResponse(ctx *fiber.Ctx) error {
-	ctx.Status(200)
-	return nil
-}
-
-type EditUser400JSONResponse General
-
-func (response EditUser400JSONResponse) VisitEditUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type EditUser401JSONResponse General
-
-func (response EditUser401JSONResponse) VisitEditUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type EditUser403JSONResponse General
-
-func (response EditUser403JSONResponse) VisitEditUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type EditUser404JSONResponse General
-
-func (response EditUser404JSONResponse) VisitEditUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type EditUser500JSONResponse General
-
-func (response EditUser500JSONResponse) VisitEditUserResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
-type SearchUsersRequestObject struct {
-	Body *SearchUsersJSONRequestBody
-}
-
-type SearchUsersResponseObject interface {
-	VisitSearchUsersResponse(ctx *fiber.Ctx) error
-}
-
-type SearchUsers200JSONResponse UserListResponse
-
-func (response SearchUsers200JSONResponse) VisitSearchUsersResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(200)
-
-	return ctx.JSON(&response)
-}
-
-type SearchUsers400JSONResponse General
-
-func (response SearchUsers400JSONResponse) VisitSearchUsersResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(400)
-
-	return ctx.JSON(&response)
-}
-
-type SearchUsers401JSONResponse General
-
-func (response SearchUsers401JSONResponse) VisitSearchUsersResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(401)
-
-	return ctx.JSON(&response)
-}
-
-type SearchUsers403JSONResponse General
-
-func (response SearchUsers403JSONResponse) VisitSearchUsersResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(403)
-
-	return ctx.JSON(&response)
-}
-
-type SearchUsers404JSONResponse General
-
-func (response SearchUsers404JSONResponse) VisitSearchUsersResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(404)
-
-	return ctx.JSON(&response)
-}
-
-type SearchUsers500JSONResponse General
-
-func (response SearchUsers500JSONResponse) VisitSearchUsersResponse(ctx *fiber.Ctx) error {
+func (response SearchPlayers500JSONResponse) VisitSearchPlayersResponse(ctx *fiber.Ctx) error {
 	ctx.Response().Header.Set("Content-Type", "application/json")
 	ctx.Status(500)
 
@@ -1097,39 +197,12 @@ func (response SearchUsers500JSONResponse) VisitSearchUsersResponse(ctx *fiber.C
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// Login
-	// (POST /auth/login)
-	Login(ctx context.Context, request LoginRequestObject) (LoginResponseObject, error)
-	// Logout
-	// (POST /auth/logout)
-	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
-	// Get my user
-	// (GET /auth/me)
-	GetMyself(ctx context.Context, request GetMyselfRequestObject) (GetMyselfResponseObject, error)
 	// Health check
 	// (GET /healthz)
 	HealthCheck(ctx context.Context, request HealthCheckRequestObject) (HealthCheckResponseObject, error)
-	// Get settings
-	// (GET /settings)
-	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
-	// Set settings
-	// (POST /settings)
-	SetSettings(ctx context.Context, request SetSettingsRequestObject) (SetSettingsResponseObject, error)
-	// Create a user
-	// (POST /user)
-	CreateUser(ctx context.Context, request CreateUserRequestObject) (CreateUserResponseObject, error)
-	// Delete a user
-	// (DELETE /user/{username})
-	DeleteUser(ctx context.Context, request DeleteUserRequestObject) (DeleteUserResponseObject, error)
-	// Get user
-	// (GET /user/{username})
-	GetUser(ctx context.Context, request GetUserRequestObject) (GetUserResponseObject, error)
-	// Edit user
-	// (PUT /user/{username})
-	EditUser(ctx context.Context, request EditUserRequestObject) (EditUserResponseObject, error)
-	// Search users
-	// (POST /users)
-	SearchUsers(ctx context.Context, request SearchUsersRequestObject) (SearchUsersResponseObject, error)
+	// Search players
+	// (POST /search)
+	SearchPlayers(ctx context.Context, request SearchPlayersRequestObject) (SearchPlayersResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx *fiber.Ctx, args interface{}) (interface{}, error)
@@ -1143,87 +216,6 @@ func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareF
 type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
-}
-
-// Login operation middleware
-func (sh *strictHandler) Login(ctx *fiber.Ctx) error {
-	var request LoginRequestObject
-
-	var body LoginJSONRequestBody
-	if err := ctx.BodyParser(&body); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
-	}
-	request.Body = &body
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.Login(ctx.UserContext(), request.(LoginRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "Login")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(LoginResponseObject); ok {
-		if err := validResponse.VisitLoginResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// Logout operation middleware
-func (sh *strictHandler) Logout(ctx *fiber.Ctx) error {
-	var request LogoutRequestObject
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.Logout(ctx.UserContext(), request.(LogoutRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "Logout")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(LogoutResponseObject); ok {
-		if err := validResponse.VisitLogoutResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// GetMyself operation middleware
-func (sh *strictHandler) GetMyself(ctx *fiber.Ctx) error {
-	var request GetMyselfRequestObject
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.GetMyself(ctx.UserContext(), request.(GetMyselfRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetMyself")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(GetMyselfResponseObject); ok {
-		if err := validResponse.VisitGetMyselfResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
 }
 
 // HealthCheck operation middleware
@@ -1251,203 +243,29 @@ func (sh *strictHandler) HealthCheck(ctx *fiber.Ctx) error {
 	return nil
 }
 
-// GetSettings operation middleware
-func (sh *strictHandler) GetSettings(ctx *fiber.Ctx) error {
-	var request GetSettingsRequestObject
+// SearchPlayers operation middleware
+func (sh *strictHandler) SearchPlayers(ctx *fiber.Ctx) error {
+	var request SearchPlayersRequestObject
 
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.GetSettings(ctx.UserContext(), request.(GetSettingsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetSettings")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(GetSettingsResponseObject); ok {
-		if err := validResponse.VisitGetSettingsResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// SetSettings operation middleware
-func (sh *strictHandler) SetSettings(ctx *fiber.Ctx) error {
-	var request SetSettingsRequestObject
-
-	var body SetSettingsJSONRequestBody
+	var body SearchPlayersJSONRequestBody
 	if err := ctx.BodyParser(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	request.Body = &body
 
 	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.SetSettings(ctx.UserContext(), request.(SetSettingsRequestObject))
+		return sh.ssi.SearchPlayers(ctx.UserContext(), request.(SearchPlayersRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetSettings")
+		handler = middleware(handler, "SearchPlayers")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		return err
-	} else if validResponse, ok := response.(SetSettingsResponseObject); ok {
-		if err := validResponse.VisitSetSettingsResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// CreateUser operation middleware
-func (sh *strictHandler) CreateUser(ctx *fiber.Ctx) error {
-	var request CreateUserRequestObject
-
-	var body CreateUserJSONRequestBody
-	if err := ctx.BodyParser(&body); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
-	}
-	request.Body = &body
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateUser(ctx.UserContext(), request.(CreateUserRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateUser")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(CreateUserResponseObject); ok {
-		if err := validResponse.VisitCreateUserResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// DeleteUser operation middleware
-func (sh *strictHandler) DeleteUser(ctx *fiber.Ctx, username string) error {
-	var request DeleteUserRequestObject
-
-	request.Username = username
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteUser(ctx.UserContext(), request.(DeleteUserRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteUser")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(DeleteUserResponseObject); ok {
-		if err := validResponse.VisitDeleteUserResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// GetUser operation middleware
-func (sh *strictHandler) GetUser(ctx *fiber.Ctx, username string) error {
-	var request GetUserRequestObject
-
-	request.Username = username
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.GetUser(ctx.UserContext(), request.(GetUserRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetUser")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(GetUserResponseObject); ok {
-		if err := validResponse.VisitGetUserResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// EditUser operation middleware
-func (sh *strictHandler) EditUser(ctx *fiber.Ctx, username string) error {
-	var request EditUserRequestObject
-
-	request.Username = username
-
-	var body EditUserJSONRequestBody
-	if err := ctx.BodyParser(&body); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
-	}
-	request.Body = &body
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.EditUser(ctx.UserContext(), request.(EditUserRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "EditUser")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(EditUserResponseObject); ok {
-		if err := validResponse.VisitEditUserResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// SearchUsers operation middleware
-func (sh *strictHandler) SearchUsers(ctx *fiber.Ctx) error {
-	var request SearchUsersRequestObject
-
-	var body SearchUsersJSONRequestBody
-	if err := ctx.BodyParser(&body); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
-	}
-	request.Body = &body
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.SearchUsers(ctx.UserContext(), request.(SearchUsersRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SearchUsers")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(SearchUsersResponseObject); ok {
-		if err := validResponse.VisitSearchUsersResponse(ctx); err != nil {
+	} else if validResponse, ok := response.(SearchPlayersResponseObject); ok {
+		if err := validResponse.VisitSearchPlayersResponse(ctx); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 	} else if response != nil {
@@ -1459,29 +277,18 @@ func (sh *strictHandler) SearchUsers(ctx *fiber.Ctx) error {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+xaTXPbNhP+Kxy875Gy5Ca98NY4H02bpJmomRw8ng5MrkQkJEADC9eKR/+9gwVJkRQk",
-	"e1pZcTK88QPcfXaxzy6WwC1LVVkpCRINS26ZSXMoOV2eaeAIHw3oD3BlwaB7WGlVgUYBNKTixvytdOau",
-	"cVUBS5hBLeSSrWOmVeFHCYTSBIfUD7jWfOXurQEteQmBwU4gXFmhIWPJ+WZkvAHRqLxoBavLz5Cik/wi",
-	"E3hEUwZod+N6BRI0L7bxgNZKdzRdKlUAl+6b0iyDEAxytOZMZV3/CYmwBM1idjNRpcNf4YolqC0MUXqV",
-	"Xn5PWhg4vl0ZKBYfwFRKGgi4FHQpjBFK9n33fw0LlrD/TTehN63jbvq+/eZw8dGBEbLkV+AF5rvNuLSi",
-	"yJ5zhKDTr0ET2jsRNQPjjsAQnDdqKeS/C9P/Rp89YHa5BtUXuIfpflhIfme6XcxLWzbokkIYZN6mJKVU",
-	"1Nx5NtU3GRRArwwgCrk0CWTCfcgt5iBRpByha9zGXXPgOs13uroQpaDHJb8RpUN2OpvFrBTS383iIcfW",
-	"MVOLhQH/1d5xVxb06m7P+WGt2LgGFXLlvLZ/2xBeid/hHsrqcSHhLnVuC/bTQrG4ULrkyBKWcYQJCgqt",
-	"b1YSGmD7KoIz6Y0wuC+6kRdnykoM5NMa2v0zG7nwrkLhRcZd1SHsn8xbMIYvCXQmTKpFKSRHXzFKXlXO",
-	"Qe7SDzN/pTmXS6cjDK4VaM78wEb+Om6csnpHs8DgGiSBUBL+WLDkfL/ZuyVfxMOSR5JDQSEC+Y4KGq/E",
-	"JFUZLEFO4AY1nyD3FICbnFuD2qYuKlWFQklesPVW0SOlpGKvp4fwtwt2g77JYlu+D+Wgb2WZWy5AarXA",
-	"1dzNlLfhfb9iXwLXoF821P7t058uz9JwtyKhtxua54iVRyHkQlF+UBJ5Sk7xFGb5qgK9UKk1RAWBRf9p",
-	"9Mv716xTVNnpyexkRtFWgeSVYAl7cjI7eUqFC3OCOXWpflq4UkXTonw2d5PDnXNeu7CnSsa8h8DgM5Wt",
-	"Goj1vPGqKly1EEpOPxtfkXwU30XtXskezAMttNwDn2UI8E+zGREXHHFp/ljC5jZNwZBfnvr3B8HWLDAJ",
-	"Vl/jM55FLWqn9fQYWj9KN11Ki6+QebVPjqH2pdKXIstAep1Pj6HzncLopbKS7Pz5OJP6WqIrg0U0B30N",
-	"OnpBi3riuy1L7hYdNRfcs5Y6yuJe7rj3YxSPUfy4othF5SaM/SJxCYEIbrvVHUF8IHuGLXHAspEgI0GO",
-	"RJBXgFG5iiw1Ho4lOf3p+LqTJf5PyFkO6ZeH5Mngh0uIJKCvRQqRMJHHTK1gBgtuCzyGezsArGwh9Lzr",
-	"rYhS8ha513Q68F1ZqO3SH9C/rY4x/Yzp5+jpp+4q6cdAr588H/yiu1hfDLNVy6B1vGMpOh9Q6PDNXJ89",
-	"YyM3UuyHodi8RzFXsmzzXzdIts0O4ANxbXuLcSTdSLrvjnTdPaoB5XyER7yzCndX09tmt2LtY5k2sbYI",
-	"+JyetwQcSTCS4HGToA7kAQl8GLckiHd2R3si/SBG+z24sSsaifPYiEOnHQIdUcOYimteAtKG8/ktE05d",
-	"xTFncbO11tn+7q+f4o5hwx30i5hVNsDF5rjUA637hqexxlXfyNsfadXn4nuw4jO72yx/DuljffTjYf5p",
-	"dE863Z9tByu6vYM2YwEeifxdFGBPm8jTd32HGP8t6fU1ug/NH2yxumAJm16f0vGnmwkduSXGjWE/hv2h",
-	"w379TwAAAP//vNv5Ed4vAAA=",
+	"H4sIAAAAAAAC/+xWQVPbPBD9K579vmMah0IvvhVaWnroMKSdHhgOiryJBbYkViumhvF/70hKIIndcElz",
+	"4hSNdvXe29VbxU8gTWONRs0OiidwssJGxOUX1EiiDktLxiKxwhhAIkNhwa1FKGBmTI1CQzeCxi3WAo5J",
+	"6UXYdyzYuzNT4lpYacYFEozg9zvTKMbGcgsFk8euGwHhvVeEJRTXS8qEv4F2M1qhmdktSg5kX1HUXF2h",
+	"s0Y77OufeVWXnwTjoNQHJKeMHohtaVoljtYAh+RMUZCsrvDeo+O+mnuP1L7OltJ24f+t3FKwCL+hwXHj",
+	"f8I5FPBf/nL1+fLe8ykTiibALnkEkWh7aiLmoJh0vidCi2a43VrJuxB0GxJ7aTvVRPB1qL6y4EGUnhS3",
+	"01Bq4rtEapQLt5iMgYKQzg01gqGAb79+BLPF9GDzGIVn6IrZQheQlZ6bcF4azULyS71QtRZpbqR3sQjF",
+	"9eZu9vHyAtY8B0fjyXgSco1FLayCAo7Hk/EJjMAKrqLMvIoGfwzrBUa60GrByuiLEorlAJxVKO8gdCo5",
+	"I559P5mslKKOR4W1tZLxcH7rkvGTG17zytacxVaU6CQpy6maKdKDkpgplyXNLcScufA1703H6qHaLcDr",
+	"ZwnBDL5pRJi7ZbMyGbsVQrmLAxU9bNxAe9PAXdaiRXKQrIiOT03Z7q2mzUej23R8fCH/4cVuvShDffVS",
+	"ooumPtkj8Y6bPBVl9tyOwHp0CNafWniuDKlHLBPt8SFozw3NVFmiTpwnh+D8bjg7N17HOj8c5lIvNCNp",
+	"UWdhTpGyz/FvfnM+kxkzuxy3Lj3lId1Bcf20hZjeU081FJA/HEF3E74u4udDHJM3t765dd9u7f4EAAD/",
+	"/y7p5ItFCwAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

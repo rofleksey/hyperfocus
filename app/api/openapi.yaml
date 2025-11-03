@@ -7,8 +7,6 @@ info:
 servers:
   - description: 'API'
     url: '/v1'
-security:
-  - Permissions: []
 
 x-errors: &commonErrors
   '400':
@@ -61,82 +59,10 @@ paths:
                 $ref: '#/components/schemas/General'
           description: 'Service is unhealthy'
 
-  /auth/login:
+  /search:
     post:
-      summary: 'Login'
-      operationId: 'login'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-        required: true
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-
-  /auth/logout:
-    post:
-      summary: 'Logout'
-      operationId: 'logout'
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-
-  /auth/me:
-    get:
-      summary: 'Get my user'
-      operationId: 'getMyself'
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetMyselfResponse'
-
-  /settings:
-    get:
-      summary: 'Get settings'
-      operationId: 'getSettings'
-      security:
-        - Permissions:
-            - "settings:edit"
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Settings'
-    post:
-      summary: 'Set settings'
-      operationId: 'setSettings'
-      security:
-        - Permissions:
-            - "settings:edit"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Settings'
-        required: true
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-
-  /users:
-    post:
-      summary: 'Search users'
-      operationId: 'searchUsers'
-      security:
-        - Permissions:
-            - "user:list"
+      summary: 'Search players'
+      operationId: 'searchPlayers'
       requestBody:
         content:
           application/json:
@@ -150,73 +76,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserListResponse'
-
-  /user/{username}:
-    parameters:
-      - in: 'path'
-        name: 'username'
-        required: true
-        schema:
-          type: string
-    get:
-      summary: 'Get user'
-      operationId: 'getUser'
-      security:
-        - Permissions:
-            - "user:list"
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-    put:
-      summary: 'Edit user'
-      operationId: 'editUser'
-      security:
-        - Permissions:
-            - "user:create"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EditUserRequest'
-        required: true
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-    delete:
-      summary: 'Delete a user'
-      operationId: 'deleteUser'
-      security:
-        - Permissions:
-            - "user:delete"
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
-
-  /user:
-    post:
-      summary: 'Create a user'
-      operationId: 'createUser'
-      security:
-        - Permissions:
-          - "user:create"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateUserRequest'
-        required: true
-      responses:
-        <<: *commonErrors
-        '200':
-          description: 'Success'
+                $ref: '#/components/schemas/SearchResponse'
 
 components:
   securitySchemes:
@@ -240,68 +100,6 @@ components:
         - statusCode
       type: object
 
-    LoginRequest:
-      properties:
-        username:
-          type: string
-        password:
-          type: string
-      required:
-        - username
-        - password
-      type: object
-
-    LoginResponse:
-      type: object
-      properties:
-        token:
-          type: string
-      required:
-        - token
-
-    Permission:
-      type: string
-      enum:
-        - "user:list"
-        - "user:create"
-        - "user:roles"
-        - "user:delete"
-        - "settings:edit"
-        - "authenticated"
-
-    User:
-      type: object
-      properties:
-        username:
-          type: string
-        created:
-          type: string
-          format: date-time
-        roles:
-          type: array
-          items:
-            type: string
-      required:
-        - username
-        - created
-        - roles
-
-    CreateUserRequest:
-      type: object
-      properties:
-        username:
-          type: string
-        password:
-          type: string
-        roles:
-          type: array
-          items:
-            type: string
-      required:
-        - username
-        - password
-        - roles
-
     HealthResponse:
       type: object
       properties:
@@ -313,99 +111,33 @@ components:
         - version
         - buildDate
 
-    GetMyselfResponse:
-      type: object
-      properties:
-        username:
-          type: string
-        permissions:
-          type: array
-          items:
-            $ref: '#/components/schemas/Permission'
-      required:
-        - username
-        - permissions
-
-    EditUserRequest:
-      type: object
-      properties:
-        password:
-          type: string
-        roles:
-          type: array
-          items:
-            type: string
-      required:
-        - roles
-
     SearchRequest:
       type: object
       properties:
         query:
           type: string
-        offset:
-          type: integer
-          minimum: 0
-        limit:
-          type: integer
-          minimum: 0
-          maximum: 100
       required:
         - query
-        - offset
-        - limit
 
-    UserListResponse:
+    SearchResponse:
       type: object
       properties:
-        users:
+        data:
           type: array
           items:
-            $ref: '#/components/schemas/User'
-        totalCount:
-          type: integer
+            $ref: '#/components/schemas/Stream'
       required:
-        - users
-        - totalCount
+        - data
 
-    Settings:
+    Stream:
       type: object
       properties:
-        apiKey:
+        name:
           type: string
+        nicknames:
+          type: array
+          items:
+            type: string
       required:
-        - apiKey
-
-    WsMessagesChangedMessage:
-      properties:
-        event:
-          enum:
-            - 'messages_changed'
-          type: 'string'
-        id:
-          type: 'string'
-          x-oapi-codegen-extra-tags:
-            exhaustruct: 'optional'
-      required:
-        - 'event'
-        - 'id'
-      type: 'object'
-
-    WsMessage:
-      discriminator:
-        mapping:
-          messages_changed: '#/components/schemas/WsMessagesChangedMessage'
-        propertyName: 'event'
-      oneOf:
-        - $ref: '#/components/schemas/WsMessagesChangedMessage'
-      properties:
-        event:
-          type: 'string'
-        id:
-          type: 'string'
-          x-oapi-codegen-extra-tags:
-            exhaustruct: 'optional'
-      required:
-        - 'event'
-        - 'id'
-      type: 'object'
+        - name
+        - nicknames

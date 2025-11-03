@@ -1,7 +1,6 @@
 package config
 
 import (
-	"hyperfocus/app/api"
 	"os"
 
 	"github.com/caarlos0/env/v11"
@@ -19,11 +18,10 @@ type Config struct {
 	Log        Log        `yaml:"log" envPrefix:"LOG_"`
 	Telemetry  Telemetry  `yaml:"telemetry" envPrefix:"TELEMETRY_"`
 	DB         DB         `yaml:"db" envPrefix:"DB_"`
-	Auth       Auth       `yaml:"auth" envPrefix:"AUTH_"`
-	Admin      Admin      `yaml:"admin" envPrefix:"ADMIN_"`
 	Twitch     Twitch     `yaml:"twitch" envPrefix:"TWITCH_"`
 	Paddle     Paddle     `yaml:"paddle" envPrefix:"PADDLE_"`
 	Processing Processing `yaml:"processing" envPrefix:"PROCESSING_"`
+	Alert      Alert      `yaml:"alert" envPrefix:"ALERT_"`
 	Proxy      Proxy      `yaml:"proxy" envPrefix:"PROXY_"`
 	Server     Server     `yaml:"server" envPrefix:"SERVER_"`
 }
@@ -58,28 +56,6 @@ type DB struct {
 	Host string `yaml:"host" env:"HOST" example:"localhost:5432" validate:"required"`
 	// Postgres database name
 	Database string `yaml:"database" env:"DATABASE" example:"hyperfocus" validate:"required"`
-}
-
-type Auth struct {
-	JWT JWTAuth `yaml:"jwt" envPrefix:"JWT_"`
-	// Custom roles object, keys - role names, values - array of granted permissions
-	// Example:
-	// custom_roles:
-	//   admin: ["*"]
-	//   vip: ["user:create"]
-	//   editor: ["user:*"]
-	//   moderator: ["user:*", "all-messages:*"]
-	CustomRoles map[string][]api.Permission `yaml:"custom_roles"`
-}
-
-type JWTAuth struct {
-	// JWT secret, generate it with `openssl rand -base64 32`
-	Secret string `yaml:"secret" env:"SECRET" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c" validate:"required"`
-}
-
-type Admin struct {
-	// Admin password
-	Password string `yaml:"password" env:"PASSWORD" example:"qwerty123" validate:"required"`
 }
 
 type Twitch struct {
@@ -118,6 +94,22 @@ type Processing struct {
 type Server struct {
 	// Web server port
 	HttpPort int `yaml:"http_port" env:"HTTP_PORT" example:"8080" validate:"required"`
+}
+
+type AlertEntry struct {
+	Streamer string   `yaml:"streamer" example:"k0per1s"`
+	Queries  []string `yaml:"queries" example:"k0per1s,k0peris"`
+}
+
+type Alert struct {
+	// Don't actually send alert
+	DryRun bool `yaml:"dry_run" example:"false"`
+	// Check interval in seconds
+	CheckInterval int `yaml:"check_interval" example:"10"`
+	// Alert TTL in seconds
+	TTL int `yaml:"ttl" example:"60"`
+	// List of alerts
+	List []AlertEntry `yaml:"list" env:"LIST"`
 }
 
 type Proxy struct {
@@ -180,6 +172,12 @@ func Load(configPath string) (*Config, error) {
 	}
 	if result.Paddle.BaseURL == "" {
 		result.Paddle.BaseURL = "http://localhost:5000"
+	}
+	if result.Alert.CheckInterval == 0 {
+		result.Alert.CheckInterval = 10
+	}
+	if result.Alert.TTL == 0 {
+		result.Alert.TTL = 60
 	}
 
 	validate := validator.New(validator.WithRequiredStructEnabled())
